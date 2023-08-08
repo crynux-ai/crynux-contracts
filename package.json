@@ -1,0 +1,14 @@
+{
+    "name": "h-contracts",
+    "version": "0.0.1",
+    "scripts": {
+        "compile": "truffle compile",
+        "test": "truffle test"
+    },
+    "devDependencies": {
+        "@openzeppelin/contracts": "^4.9.3",
+        "truffle": "^5.11.1",
+        "truffle-assertions": "^0.9.2",
+        "truffle-plugin-verify": "^0.6.4"
+    }
+}
