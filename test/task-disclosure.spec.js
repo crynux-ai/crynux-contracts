@@ -180,14 +180,19 @@ contract("Task", (accounts) => {
 
         const userBalance = await cnxInstance.balanceOf(accounts[1]);
 
+        let tx;
         for(let i= 0; i < 2; i++) {
-            await taskInstance.discloseTaskResult(
+            tx = await taskInstance.discloseTaskResult(
                 taskId,
                 nodeRounds[accounts[2 + i]],
                 result,
                 {from: accounts[2 + i]}
             );
         }
+
+        truffleAssert.eventEmitted(tx, 'TaskSuccess', (ev) => {
+            return ev.taskId.eq(taskId);
+        });
 
         const availableNodesAfter = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfter, 2, "Node not free");
@@ -292,15 +297,19 @@ contract("Task", (accounts) => {
             cheatingResult,
             {from: accounts[2]}
         );
-
+        
+        let tx;
         for(let i= 1; i < 3; i++) {
-            await taskInstance.discloseTaskResult(
+            tx = await taskInstance.discloseTaskResult(
                 taskId,
                 nodeRounds[accounts[2 + i]],
                 result,
                 {from: accounts[2 + i]}
             );
         }
+        truffleAssert.eventEmitted(tx, 'TaskSuccess', (ev) => {
+            return ev.taskId.eq(taskId);
+        });
 
         const availableNodesAfter = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfter, 2, "Node free");
@@ -402,12 +411,16 @@ contract("Task", (accounts) => {
             {from: accounts[3]}
         );
 
-        await taskInstance.discloseTaskResult(
+        const tx = await taskInstance.discloseTaskResult(
             taskId,
             nodeRounds[accounts[4]],
             result,
             {from: accounts[4]}
         );
+
+        truffleAssert.eventEmitted(tx, 'TaskSuccess', (ev) => {
+            return ev.taskId.eq(taskId);
+        });
 
         const availableNodesAfter = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfter, 2, "Node free");

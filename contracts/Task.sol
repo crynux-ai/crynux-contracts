@@ -157,11 +157,21 @@ contract Task is Ownable {
                     settleNodeByDiscloseIndex(taskId, 0);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 1);
+                    emit TaskSuccess(
+                        taskId,
+                        tasks[taskId].results[tasks[taskId].resultDisclosedRounds[0]],
+                        tasks[taskId].selectedNodes[tasks[taskId].resultDisclosedRounds[0]]
+                    );
                 } else if(compareRound(taskId, 1, 2)) {
                     // 0 is cheating
                     settleNodeByDiscloseIndex(taskId, 1);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 0);
+                    emit TaskSuccess(
+                        taskId,
+                        tasks[taskId].results[tasks[taskId].resultDisclosedRounds[1]],
+                        tasks[taskId].selectedNodes[tasks[taskId].resultDisclosedRounds[1]]
+                    );
                 } else {
                     // 3 different results...
                     // Let's just abort the task for now...
