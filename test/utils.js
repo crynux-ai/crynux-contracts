@@ -24,10 +24,7 @@ const prepareTask = async (accounts, cnxTokenInstance, nodeInstance, taskInstanc
 
     const balBefore = await cnxTokenInstance.balanceOf(accounts[1]);
 
-    const clientId = Math.round(Math.random() * 10000000);
-
     const tx = await taskInstance.createTask(
-        new BN(clientId),
         web3.utils.soliditySha3("task hash"),
         web3.utils.soliditySha3("data hash"),
         {from: accounts[1]}

@@ -5,7 +5,6 @@ const Task = artifacts.require("Task");
 const truffleAssert = require('truffle-assertions');
 
 const { prepareNetwork } = require("./utils");
-const {client} = require("truffle/build/3618.bundled");
 
 const { toWei, BN } = web3.utils;
 
@@ -16,10 +15,8 @@ contract("Task", (accounts) => {
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
 
-        const clientId = new BN(Math.round(Math.random() * 10000000));
-
         try {
-            await taskInstance.createTask(clientId, web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
+            await taskInstance.createTask(web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
         } catch (e) {
             assert.match(e.toString(), /Not enough tokens for task/, "Wrong reason: " + e.toString());
         }
@@ -27,7 +24,7 @@ contract("Task", (accounts) => {
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
 
         try {
-            await taskInstance.createTask(clientId, web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
+            await taskInstance.createTask(web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
         } catch (e) {
             assert.match(e.toString(), /Not enough allowance for task/, "Wrong reason: " + e.toString());
         }
@@ -35,7 +32,7 @@ contract("Task", (accounts) => {
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), {from: userAccount});
 
         try {
-            await taskInstance.createTask(clientId, web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
+            await taskInstance.createTask(web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
         } catch (e) {
             assert.match(e.toString(), /Not enough nodes/, "Wrong reason: " + e.toString());
         }
@@ -43,20 +40,21 @@ contract("Task", (accounts) => {
         await prepareNetwork(accounts, cnxInstance, nodeInstance);
 
         const tx = await taskInstance.createTask(
-            clientId,
             web3.utils.soliditySha3("task hash"),
             web3.utils.soliditySha3("data hash"),
             {from: userAccount}
         );
 
+        const taskId = tx.logs[0].args.taskId;
+
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
-            return ev.selectedNode === accounts[2] && clientId.eq(ev.clientId);
+            return ev.selectedNode === accounts[2];
         });
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
-            return ev.selectedNode === accounts[3] && clientId.eq(ev.clientId);
+            return ev.selectedNode === accounts[3];
         });
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
-            return ev.selectedNode === accounts[4] && clientId.eq(ev.clientId);
+            return ev.selectedNode === accounts[4];
         });
 
         const availableNodes = await nodeInstance.availableNodes();
