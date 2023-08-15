@@ -30,7 +30,7 @@ contract Task is Ownable {
     uint256 private taskFeePerNode;
     uint private distanceThreshold;
 
-    event TaskCreated(uint256 taskId, address indexed creator, address indexed selectedNode, bytes32 taskHash, bytes32 dataHash, uint round);
+    event TaskCreated(uint256 taskId, address indexed creator, address indexed selectedNode, uint256 clientId, bytes32 taskHash, bytes32 dataHash, uint round);
     event TaskResultCommitmentsReady(uint256 taskId);
     event TaskSuccess(uint256 taskId, bytes result, address indexed resultNode);
     event TaskAborted(uint256 taskId);
@@ -43,7 +43,7 @@ contract Task is Ownable {
         distanceThreshold = 5;
     }
 
-    function createTask(bytes32 taskHash, bytes32 dataHash) public {
+    function createTask(uint256 clientId, bytes32 taskHash, bytes32 dataHash) public {
 
         uint256 taskFee = taskFeePerNode * 3;
 
@@ -74,7 +74,7 @@ contract Task is Ownable {
             tasks[taskInfo.id].selectedNodes.push(nodeAddress);
             node.updateNodeAvailabilityByTask(nodeAddress, 2);
             nodeTasks[nodeAddress] = taskInfo.id;
-            emit TaskCreated(taskInfo.id, msg.sender, nodeAddress, taskHash, dataHash, i);
+            emit TaskCreated(taskInfo.id, msg.sender, nodeAddress, clientId, taskHash, dataHash, i);
         }
     }
 
