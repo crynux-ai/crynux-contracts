@@ -3,9 +3,11 @@
     "version": "0.0.1",
     "scripts": {
         "compile": "truffle compile",
-        "test": "truffle test"
+        "test": "truffle test",
+        "abi": "truffle compile && truffle run abigen"
     },
     "devDependencies": {
+        "@chainsafe/truffle-plugin-abigen": "^0.0.2",
         "@openzeppelin/contracts": "^4.9.3",
         "truffle": "^5.11.1",
         "truffle-assertions": "^0.9.2",
