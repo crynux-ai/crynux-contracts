@@ -79,7 +79,7 @@ contract Task is Ownable {
     }
 
     function getSelectedNode(bytes32 taskHash, bytes32 dataHash, uint round) view public returns (address) {
-        bytes32 blockRand = keccak256(abi.encodePacked(block.prevrandao, round));
+        bytes32 blockRand = keccak256(abi.encodePacked(blockhash(block.number - 1), round));
         uint256 randNum = uint256(blockRand ^ taskHash ^ dataHash) % node.totalNodes();
         return node.getAvailableNodeStartsFrom(randNum);
     }
