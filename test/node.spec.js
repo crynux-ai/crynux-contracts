@@ -28,8 +28,13 @@ contract("Node", (accounts) => {
 
         await cnxInstance.transfer(nodeAccount, new BN(toWei("400", "ether")));
 
+        let status = await nodeInstance.getNodeStatus(nodeAccount);
+        assert.equal(status.toNumber(), 0, "Node has joined.")
+
         await nodeInstance.join({from: nodeAccount});
 
+        status = await nodeInstance.getNodeStatus(nodeAccount);
+        assert.equal(status.toNumber(), 1, "Node join failed.");
 
         const totalNodes = await nodeInstance.totalNodes();
         assert.equal(totalNodes.toNumber(), 1, "Wrong number of nodes");
@@ -45,6 +50,9 @@ contract("Node", (accounts) => {
         }
 
         await nodeInstance.quit({from: nodeAccount});
+
+        status = await nodeInstance.getNodeStatus(nodeAccount);
+        assert.equal(status.toNumber(), 0, "Node quit failed.")
 
         const totalNodesRet = await nodeInstance.totalNodes();
         assert.equal(totalNodesRet.toNumber(), 0, "Wrong number of nodes");
@@ -83,6 +91,9 @@ contract("Node", (accounts) => {
 
         await nodeInstance.pause({from: nodeAccount});
 
+        let status = await nodeInstance.getNodeStatus(nodeAccount);
+        assert.equal(status.toNumber(), 3, "Node pause failed.")
+
         const availableNodesAfter = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfter.toNumber(), 0, "Wrong number of available nodes");
 
@@ -93,6 +104,9 @@ contract("Node", (accounts) => {
         }
 
         await nodeInstance.resume({from: nodeAccount});
+        status = await nodeInstance.getNodeStatus(nodeAccount);
+        assert.equal(status.toNumber(), 1, "Node resume failed.");
+
         const availableNodeAfter = await nodeInstance.getAvailableNodeStartsFrom(new BN(0));
         assert.equal(availableNodeAfter, nodeAccount, "Wrong node returned");
 
