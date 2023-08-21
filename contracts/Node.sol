@@ -10,6 +10,7 @@ contract Node is Ownable {
     uint256 private maxNodesAllowed = 100000;
     uint256 private requiredStakeAmount = 400 * 10 ** 18;
 
+    uint private NODE_STATUS_UNKNOWN = 0;
     uint private NODE_STATUS_AVAILABLE = 1;
     uint private NODE_STATUS_BUSY = 2;
     uint private NODE_STATUS_PAUSED = 3;
@@ -143,5 +144,13 @@ contract Node is Ownable {
 
     function updateTaskContractAddress(address taskContract) public onlyOwner {
         taskContractAddress = taskContract;
+    }
+
+    function getNodeStatus(address nodeAddress) public view returns (uint) {
+        if (nodeMap.contains(nodeAddress)) {
+            return nodeMap.get(nodeAddress);
+        } else {
+            return NODE_STATUS_UNKNOWN;
+        }
     }
 }
