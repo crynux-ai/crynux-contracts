@@ -30,6 +30,7 @@ contract("Task", (accounts) => {
                 nonce,
                 {from: accounts[2]}
             );
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Task not exist/, "Wrong reason: " + e.toString());
         }
@@ -42,6 +43,7 @@ contract("Task", (accounts) => {
                 nonce,
                 {from: accounts[2]}
             );
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Round not exist/, "Wrong reason: " + e.toString());
         }
@@ -53,6 +55,7 @@ contract("Task", (accounts) => {
                 commitment,
                 nonce,
                 {from: accounts[2]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Not selected node/, "Wrong reason: " + e.toString());
         }
@@ -71,6 +74,8 @@ contract("Task", (accounts) => {
                 commitment,
                 nonce,
                 {from: accounts[2]});
+
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Already submitted/, "Wrong reason: " + e.toString());
         }
@@ -82,6 +87,7 @@ contract("Task", (accounts) => {
                 commitment,
                 nonce,
                 {from: accounts[3]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Not selected node/, "Wrong reason: " + e.toString());
         }
@@ -93,6 +99,7 @@ contract("Task", (accounts) => {
                 commitment,
                 nonce,
                 {from: accounts[3]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Nonce already used/, "Wrong reason: " + e.toString());
         }

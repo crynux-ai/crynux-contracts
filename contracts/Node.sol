@@ -10,10 +10,13 @@ contract Node is Ownable {
     uint256 private maxNodesAllowed = 100000;
     uint256 private requiredStakeAmount = 400 * 10 ** 18;
 
-    uint private NODE_STATUS_UNKNOWN = 0;
+    // Node status
+    uint private NODE_STATUS_QUIT = 0;
     uint private NODE_STATUS_AVAILABLE = 1;
     uint private NODE_STATUS_BUSY = 2;
-    uint private NODE_STATUS_PAUSED = 3;
+    uint private NODE_STATUS_PENDING_PAUSE = 3;
+    uint private NODE_STATUS_PENDING_QUIT = 4;
+    uint private NODE_STATUS_PAUSED = 5;
 
     IERC20 private cnxToken;
 
@@ -28,7 +31,7 @@ contract Node is Ownable {
 
     function join() public {
         require(totalNodes() < maxNodesAllowed, "Network is full");
-        require(!nodeMap.contains(msg.sender), "Node already joined");
+        require(getNodeStatus(msg.sender) == NODE_STATUS_QUIT, "Node already joined");
 
         // Check the staking
         require(
@@ -54,32 +57,57 @@ contract Node is Ownable {
     }
 
     function quit() public {
-        require(nodeMap.contains(msg.sender), "Node already quited");
-        require(nodeMap.get(msg.sender) != NODE_STATUS_BUSY, "Task not finished");
+        uint nodeStatus = getNodeStatus(msg.sender);
 
-        // Remove the node from the list
-        nodeMap.remove(msg.sender);
-        numAvailableNodes--;
+        if (nodeStatus == NODE_STATUS_AVAILABLE || nodeStatus == NODE_STATUS_PAUSED) {
+            // Remove the node from the list
+            nodeMap.remove(msg.sender);
 
-        // Return the staked tokens
-        require(
-            cnxToken.transfer(msg.sender, requiredStakeAmount),
-            "Token transfer failed"
-        );
+            if (nodeStatus == NODE_STATUS_AVAILABLE) {
+                numAvailableNodes--;
+            }
+
+            // Return the staked tokens
+            require(
+                cnxToken.transfer(msg.sender, requiredStakeAmount),
+                "Token transfer failed"
+            );
+        } else if (nodeStatus == NODE_STATUS_BUSY) {
+            nodeMap.set(msg.sender, NODE_STATUS_PENDING_QUIT);
+        } else {
+            revert("Illegal node status");
+        }
     }
 
     function pause() public {
-        updateNodeAvailabilityByNode(NODE_STATUS_PAUSED);
-        numAvailableNodes--;
+        uint nodeStatus = getNodeStatus(msg.sender);
+
+        if (nodeStatus == NODE_STATUS_AVAILABLE) {
+            nodeMap.set(msg.sender, NODE_STATUS_PAUSED);
+            numAvailableNodes--;
+        } else if (nodeStatus == NODE_STATUS_BUSY) {
+            nodeMap.set(msg.sender, NODE_STATUS_PENDING_PAUSE);
+        } else {
+            revert("Illegal node status");
+        }
     }
 
     function resume() public {
-        updateNodeAvailabilityByNode(NODE_STATUS_AVAILABLE);
+        require(getNodeStatus(msg.sender) == NODE_STATUS_PAUSED, "Illegal node status");
+        nodeMap.set(msg.sender, NODE_STATUS_AVAILABLE);
         numAvailableNodes++;
     }
 
     function slash(address nodeAddress) public {
-        require(msg.sender == taskContractAddress, "Not allowed");
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
+
+        uint nodeStatus = getNodeStatus(nodeAddress);
+        require(
+            nodeStatus == NODE_STATUS_BUSY
+            || nodeStatus == NODE_STATUS_PENDING_PAUSE
+            || nodeStatus == NODE_STATUS_PENDING_QUIT,
+            "Illegal node status"
+        );
 
         // Transfer the staked tokens to the root
         require(
@@ -99,30 +127,44 @@ contract Node is Ownable {
         return numAvailableNodes;
     }
 
-    function updateNodeAvailabilityByTask(address nodeAddress, uint nodeStatus) public {
-        require(msg.sender == taskContractAddress, "Not allowed");
-        require(nodeMap.contains(nodeAddress), "Node not exist");
-        require(nodeStatus == NODE_STATUS_BUSY || nodeStatus == NODE_STATUS_AVAILABLE, "Illegal node status");
-        nodeMap.set(nodeAddress, nodeStatus);
-
-        if(nodeStatus == NODE_STATUS_BUSY) {
-            numAvailableNodes--;
-        } else {
-            numAvailableNodes++;
-        }
+    function startTask(address nodeAddress) public {
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
+        require(getNodeStatus(nodeAddress) == NODE_STATUS_AVAILABLE, "Node is not available");
+        nodeMap.set(nodeAddress, NODE_STATUS_BUSY);
+        numAvailableNodes--;
     }
 
-    function updateNodeAvailabilityByNode(uint nodeStatus) internal {
-        require(nodeMap.contains(msg.sender), "Node already quited");
-        require(nodeMap.get(msg.sender) != NODE_STATUS_BUSY, "Task not finished");
-        require(nodeStatus == NODE_STATUS_PAUSED || nodeStatus == NODE_STATUS_AVAILABLE, "Illegal node status");
-        nodeMap.set(msg.sender, nodeStatus);
+    function finishTask(address nodeAddress) public {
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
+
+        uint nodeStatus = getNodeStatus(nodeAddress);
+        require(
+            nodeStatus == NODE_STATUS_BUSY
+            || nodeStatus == NODE_STATUS_PENDING_PAUSE
+            || nodeStatus == NODE_STATUS_PENDING_QUIT
+            , "Illegal node status");
+
+        if (nodeStatus == NODE_STATUS_BUSY) {
+            nodeMap.set(nodeAddress, NODE_STATUS_AVAILABLE);
+            numAvailableNodes++;
+        } else if (nodeStatus == NODE_STATUS_PENDING_QUIT) {
+            // Remove the node from the list
+            nodeMap.remove(nodeAddress);
+
+            // Return the staked tokens
+            require(
+                cnxToken.transfer(nodeAddress, requiredStakeAmount),
+                "Token transfer failed"
+            );
+        } else if (nodeStatus == NODE_STATUS_PENDING_PAUSE) {
+            nodeMap.set(nodeAddress, NODE_STATUS_PAUSED);
+        }
     }
 
     function getAvailableNodeStartsFrom(uint256 i) public view returns (address) {
 
         address nodeAddress;
-        uint nodeStatus = NODE_STATUS_BUSY;
+        uint nodeStatus;
         uint256 total = totalNodes();
         uint256 stop = i;
 
@@ -150,7 +192,7 @@ contract Node is Ownable {
         if (nodeMap.contains(nodeAddress)) {
             return nodeMap.get(nodeAddress);
         } else {
-            return NODE_STATUS_UNKNOWN;
+            return NODE_STATUS_QUIT;
         }
     }
 }

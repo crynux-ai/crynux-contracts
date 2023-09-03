@@ -20,24 +20,28 @@ contract("Task", (accounts) => {
 
         try {
             await taskInstance.discloseTaskResult(taskId, nodeRounds[accounts[2]], "0x0102030405060708", {from: accounts[2]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Commitments not ready/, "Wrong reason: " + e.toString());
         }
 
         try {
             await taskInstance.discloseTaskResult(new BN(99999), nodeRounds[accounts[2]], "0x0102030405060708", {from: accounts[2]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Task not exist/, "Wrong reason: " + e.toString());
         }
 
         try {
             await taskInstance.discloseTaskResult(taskId, new BN(5), "0x0102030405060708", {from: accounts[2]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Round not exist/, "Wrong reason: " + e.toString());
         }
 
         try {
             await taskInstance.discloseTaskResult(taskId, nodeRounds[accounts[2]], "0x0102030405060708", {from: accounts[3]});
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Not selected node/, "Wrong reason: " + e.toString());
         }
@@ -69,9 +73,20 @@ contract("Task", (accounts) => {
                 "0x0102030405060717",
                 {from: accounts[2]}
             );
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Mismatch result and commitment/, "Wrong reason: " + e.toString());
         }
+
+        // Set the quit and paused status to the first and second node
+        await nodeInstance.pause({from: accounts[2]});
+        await nodeInstance.quit({from: accounts[3]});
+
+        let node2Status = await nodeInstance.getNodeStatus(accounts[2]);
+        assert.equal(node2Status.toNumber(), 3, "wrong node status for node 2");
+
+        let node3Status = await nodeInstance.getNodeStatus(accounts[3]);
+        assert.equal(node3Status.toNumber(), 4, "wrong node status for node 3");
 
         await taskInstance.discloseTaskResult(
             taskId,
@@ -93,27 +108,28 @@ contract("Task", (accounts) => {
 
         for(let i= 0; i < 2; i++) {
             const bal = await cnxInstance.balanceOf(accounts[2 + i]);
+
+            let expectedBalance = nodeBalances[i].add(new BN(toWei("10", "ether")));
+
+            if (i === 1) {
+                expectedBalance = expectedBalance.add(new BN(toWei("400", "ether")));
+            }
+
             assert.equal(
                 bal.toString(),
-                nodeBalances[i].add(new BN(toWei("10", "ether"))).toString(),
+                expectedBalance.toString(),
                 "Task fee not received"
             );
         }
 
+        node2Status = await nodeInstance.getNodeStatus(accounts[2]);
+        assert.equal(node2Status.toNumber(), 5, "wrong node status for node 2");
+
+        node3Status = await nodeInstance.getNodeStatus(accounts[3]);
+        assert.equal(node3Status.toNumber(), 0, "wrong node status for node 3");
+
         const availableNodes = await nodeInstance.availableNodes();
-        assert.equal(availableNodes, 2, "Nodes not free");
-
-        try {
-            await nodeInstance.quit({from: accounts[4]});
-        } catch (e) {
-            assert.match(e.toString(), /Task not finished/, "Wrong reason: " + e.toString());
-        }
-
-        try {
-            await nodeInstance.pause({from: accounts[4]});
-        } catch (e) {
-            assert.match(e.toString(), /Task not finished/, "Wrong reason: " + e.toString());
-        }
+        assert.equal(availableNodes, 0, "Wrong number of available nodes");
 
         await taskInstance.discloseTaskResult(
             taskId,
@@ -130,7 +146,10 @@ contract("Task", (accounts) => {
         );
 
         const availableNodesAfter = await nodeInstance.availableNodes();
-        assert.equal(availableNodesAfter, 3, "Node not free");
+        assert.equal(availableNodesAfter, 1, "Node 4 not free");
+
+        const node4Status = await nodeInstance.getNodeStatus(accounts[4]);
+        assert.equal(node4Status.toNumber(), 1, "wrong node status for node 4");
 
         const taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, '0', "task not deleted");
@@ -145,6 +164,14 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+
+        await nodeInstance.resume({from: accounts[2]});
+
+        await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[3]});
+        await nodeInstance.join({from: accounts[3]});
+
+        const availableNodesStart = await nodeInstance.availableNodes();
+        assert.equal(availableNodesStart, 3, "Wrong number of available nodes");
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 

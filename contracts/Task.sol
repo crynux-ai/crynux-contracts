@@ -72,7 +72,7 @@ contract Task is Ownable {
         for(uint i=0; i<3; i++) {
             address nodeAddress = getSelectedNode(taskHash, dataHash, i);
             tasks[taskInfo.id].selectedNodes.push(nodeAddress);
-            node.updateNodeAvailabilityByTask(nodeAddress, 2);
+            node.startTask(nodeAddress);
             nodeTasks[nodeAddress] = taskInfo.id;
             emit TaskCreated(taskInfo.id, msg.sender, nodeAddress, taskHash, dataHash, i);
         }
@@ -196,7 +196,7 @@ contract Task is Ownable {
             uint round = tasks[taskId].resultDisclosedRounds[i];
             address nodeAddress = tasks[taskId].selectedNodes[round];
             nodeTasks[nodeAddress] = 0;
-            node.updateNodeAvailabilityByTask(nodeAddress, 1);
+            node.finishTask(nodeAddress);
         }
 
         emit TaskAborted(taskId);
@@ -223,7 +223,7 @@ contract Task is Ownable {
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
-        node.updateNodeAvailabilityByTask(nodeAddress, 1);
+        node.finishTask(nodeAddress);
     }
 
     function punishNodeByDiscloseIndex(uint256 taskId, uint discloseIndex) internal {

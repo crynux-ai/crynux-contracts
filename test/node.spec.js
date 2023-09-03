@@ -64,7 +64,7 @@ contract("Node", (accounts) => {
             await nodeInstance.quit({from: nodeAccount});
             assert.fail("Transaction not reverted");
         } catch (e) {
-            assert.match(e.toString(), /Node already quited/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /Illegal node status/, "Wrong reason: " + e.toString());
         }
     });
 
@@ -92,13 +92,14 @@ contract("Node", (accounts) => {
         await nodeInstance.pause({from: nodeAccount});
 
         let status = await nodeInstance.getNodeStatus(nodeAccount);
-        assert.equal(status.toNumber(), 3, "Node pause failed.")
+        assert.equal(status.toNumber(), 5, "Node pause failed.")
 
         const availableNodesAfter = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfter.toNumber(), 0, "Wrong number of available nodes");
 
         try {
             await nodeInstance.getAvailableNodeStartsFrom(new BN(0));
+            assert.fail("should not pass");
         } catch (e) {
             assert.match(e.toString(), /Not found/, "Wrong reason: " + e.toString());
         }

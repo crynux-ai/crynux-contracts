@@ -17,6 +17,7 @@ contract("Task", (accounts) => {
 
         try {
             await taskInstance.createTask(web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
+            assert.fail('should not pass');
         } catch (e) {
             assert.match(e.toString(), /Not enough tokens for task/, "Wrong reason: " + e.toString());
         }
@@ -25,6 +26,7 @@ contract("Task", (accounts) => {
 
         try {
             await taskInstance.createTask(web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
+            assert.fail('should not pass');
         } catch (e) {
             assert.match(e.toString(), /Not enough allowance for task/, "Wrong reason: " + e.toString());
         }
@@ -33,6 +35,7 @@ contract("Task", (accounts) => {
 
         try {
             await taskInstance.createTask(web3.utils.soliditySha3("task hash"), web3.utils.soliditySha3("data hash"), {from: userAccount});
+            assert.fail('should not pass');
         } catch (e) {
             assert.match(e.toString(), /Not enough nodes/, "Wrong reason: " + e.toString());
         }
@@ -44,8 +47,6 @@ contract("Task", (accounts) => {
             web3.utils.soliditySha3("data hash"),
             {from: userAccount}
         );
-
-        const taskId = tx.logs[0].args.taskId;
 
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
             return ev.selectedNode === accounts[2];
@@ -60,16 +61,30 @@ contract("Task", (accounts) => {
         const availableNodes = await nodeInstance.availableNodes();
         assert.equal(availableNodes.toNumber(), 0, "Wrong number of available nodes");
 
-        try {
-            await nodeInstance.quit({from: accounts[2]});
-        } catch (e) {
-            assert.match(e.toString(), /Task not finished/, "Wrong reason: " + e.toString());
-        }
+        await nodeInstance.quit({from: accounts[2]});
+
+        // Should be in pending quit status now
+        const nodeStatus = await nodeInstance.getNodeStatus(accounts[2]);
+        assert.equal(nodeStatus.toNumber(), 4, "Wrong node status");
 
         try {
-            await nodeInstance.pause({from: accounts[2]});
+            await nodeInstance.quit({from: accounts[2]});
+            assert.fail("should not pass");
         } catch (e) {
-            assert.match(e.toString(), /Task not finished/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /Illegal node status/, "Wrong reason: " + e.toString());
+        }
+
+        await nodeInstance.pause({from: accounts[3]});
+
+        // Should be in pending pause status now
+        const node2Status = await nodeInstance.getNodeStatus(accounts[3]);
+        assert.equal(node2Status.toNumber(), 3, "Wrong node status");
+
+        try {
+            await nodeInstance.pause({from: accounts[3]});
+            assert.fail("should not pass");
+        } catch (e) {
+            assert.match(e.toString(), /Illegal node status/, "Wrong reason: " + e.toString());
         }
     });
 });
