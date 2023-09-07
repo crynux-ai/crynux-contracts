@@ -46,6 +46,13 @@ contract("Task", (accounts) => {
             assert.match(e.toString(), /Not selected node/, "Wrong reason: " + e.toString());
         }
 
+        try {
+            await taskInstance.discloseTaskResult(taskId, nodeRounds[accounts[2]], [], {from: accounts[2]});
+            assert.fail("should not pass");
+        } catch (e) {
+            assert.match(e.toString(), /Invalid result/, "Wrong reason: " + e.toString());
+        }
+
         const result = "0x0102030405060708";
 
         for(let i=0; i<3; i++) {

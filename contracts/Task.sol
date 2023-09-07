@@ -108,6 +108,7 @@ contract Task is Ownable {
     }
 
     function discloseTaskResult(uint256 taskId, uint round, bytes calldata result) public {
+        require(result.length > 0, "Invalid result");
         require(tasks[taskId].id != 0, "Task not exist");
         require(round >= 0 && round < 3, "Round not exist");
         require(tasks[taskId].selectedNodes[round] == msg.sender, "Not selected node");
@@ -127,6 +128,30 @@ contract Task is Ownable {
         tasks[taskId].results[round] = result;
         tasks[taskId].resultDisclosedRounds.push(round);
 
+        checkTaskResult(taskId);
+    }
+
+    function reportTaskError(uint256 taskId, uint round) public {
+        require(tasks[taskId].id != 0, "Task not exist");
+        require(round >= 0 && round < 3, "Round not exist");
+        require(tasks[taskId].selectedNodes[round] == msg.sender, "Not selected node");
+        require(tasks[taskId].commitments[round] == 0, "Already submitted");
+
+        uint256 errCommitment = 1;
+        tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
+        tasks[taskId].resultDisclosedRounds.push(round); // Set to result disclosed state, the result is a special zero value
+
+        if (tasks[taskId].commitments[0] != 0
+            && tasks[taskId].commitments[1] != 0
+            && tasks[taskId].commitments[2] != 0) {
+            emit TaskResultCommitmentsReady(taskId);
+        }
+
+        checkTaskResult(taskId);
+    }
+
+    function checkTaskResult(uint256 taskId) internal {
+
         if (tasks[taskId].resultDisclosedRounds.length == 2) {
 
             // If no node is cheating, we can already give the result back to the user.
@@ -135,10 +160,8 @@ contract Task is Ownable {
             if(tasks[taskId].isSuccess) {
                 settleNodeByDiscloseIndex(taskId, 0);
                 settleNodeByDiscloseIndex(taskId, 1);
-                emit TaskSuccess(
-                    taskId,
-                    tasks[taskId].results[tasks[taskId].resultDisclosedRounds[0]],
-                    tasks[taskId].selectedNodes[tasks[taskId].resultDisclosedRounds[0]]);
+
+                emitTaskFinishedEvent(taskId, 0);
             }
 
         } else if(tasks[taskId].resultDisclosedRounds.length == 3) {
@@ -157,21 +180,16 @@ contract Task is Ownable {
                     settleNodeByDiscloseIndex(taskId, 0);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 1);
-                    emit TaskSuccess(
-                        taskId,
-                        tasks[taskId].results[tasks[taskId].resultDisclosedRounds[0]],
-                        tasks[taskId].selectedNodes[tasks[taskId].resultDisclosedRounds[0]]
-                    );
+
+                    emitTaskFinishedEvent(taskId, 0);
+
                 } else if(compareRound(taskId, 1, 2)) {
                     // 0 is cheating
                     settleNodeByDiscloseIndex(taskId, 1);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 0);
-                    emit TaskSuccess(
-                        taskId,
-                        tasks[taskId].results[tasks[taskId].resultDisclosedRounds[1]],
-                        tasks[taskId].selectedNodes[tasks[taskId].resultDisclosedRounds[1]]
-                    );
+
+                    emitTaskFinishedEvent(taskId, 1);
                 } else {
                     // 3 different results...
                     // Let's just abort the task for now...
@@ -180,6 +198,21 @@ contract Task is Ownable {
             }
 
             delete tasks[taskId];
+        }
+    }
+
+    function emitTaskFinishedEvent(uint256 taskId, uint honestRoundIndex) internal {
+        uint honestRound = tasks[taskId].resultDisclosedRounds[honestRoundIndex];
+        if (tasks[taskId].results[honestRound].length > 0) {
+            // Success task
+            emit TaskSuccess(
+                taskId,
+                tasks[taskId].results[honestRound],
+                tasks[taskId].selectedNodes[honestRound]
+            );
+        } else {
+            // Aborted task
+            emit TaskAborted(taskId);
         }
     }
 

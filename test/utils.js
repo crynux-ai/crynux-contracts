@@ -3,14 +3,17 @@ const { toWei, BN } = web3.utils;
 const prepareNetwork = async (accounts, cnxTokenInstance, nodeInstance) => {
 
     for(let i = 2; i < 5; i++) {
-        const nodeAccount = accounts[i];
-        await cnxTokenInstance.transfer(nodeAccount, new BN(toWei("400", "ether")));
-        await cnxTokenInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: nodeAccount});
-        await nodeInstance.join({from: nodeAccount});
+        await prepareNode(accounts[i], cnxTokenInstance, nodeInstance);
     }
 
     const availableNodes = await nodeInstance.availableNodes();
     assert.equal(availableNodes.toNumber(), 3, "Wrong number of available nodes");
+};
+
+const prepareNode = async (nodeAccount, cnxTokenInstance, nodeInstance) => {
+    await cnxTokenInstance.transfer(nodeAccount, new BN(toWei("400", "ether")));
+    await cnxTokenInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: nodeAccount});
+    await nodeInstance.join({from: nodeAccount});
 };
 
 const prepareUser = async(userAccount, cnxTokenInstance, taskInstance) => {
@@ -57,4 +60,4 @@ const getCommitment = (result) => {
     return [web3.utils.soliditySha3(result, nonce), nonce];
 };
 
-module.exports = {prepareUser, prepareNetwork, getCommitment, prepareTask};
+module.exports = {prepareUser, prepareNetwork, getCommitment, prepareTask, prepareNode};
