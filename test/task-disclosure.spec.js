@@ -53,7 +53,7 @@ contract("Task", (accounts) => {
             assert.match(e.toString(), /Invalid result/, "Wrong reason: " + e.toString());
         }
 
-        const result = "0x0102030405060708";
+        const result = "0x01020304050607080807060504030201";
 
         for(let i=0; i<3; i++) {
             const [commitment, nonce] = getCommitment(result);
@@ -77,7 +77,7 @@ contract("Task", (accounts) => {
             await taskInstance.discloseTaskResult(
                 taskId,
                 nodeRounds[accounts[2]],
-                "0x0102030405060717",
+                "0x01020304050607171707060504030201",
                 {from: accounts[2]}
             );
             assert.fail("should not pass");
@@ -182,8 +182,8 @@ contract("Task", (accounts) => {
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
-        const result = "0x0102030405060708";
-        const cheatingResult = "0x0102030405060717"
+        const result = "0x01020304050607080807060504030201";
+        const cheatingResult = "0x01020304050607171707060504030201"
 
         for(let i= 0; i < 2; i++) {
             const [commitment, nonce] = getCommitment(result);
@@ -293,8 +293,8 @@ contract("Task", (accounts) => {
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
-        const result = "0x0102030405060708";
-        const cheatingResult = "0x0102030405060717"
+        const result = "0x01020304050607080807060504030201";
+        const cheatingResult = "0x01020304050607171707060504030201"
 
         for(let i= 1; i < 3; i++) {
             const [commitment, nonce] = getCommitment(result);
@@ -392,8 +392,8 @@ contract("Task", (accounts) => {
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
-        const result = "0x0102030405060708";
-        const cheatingResult = "0x0102030405060717"
+        const result = "0x01020304050607080807060504030201";
+        const cheatingResult = "0x01020304050607171707060504030201"
 
         const [commitment1, nonce1] = getCommitment(result);
         await taskInstance.submitTaskResultCommitment(
