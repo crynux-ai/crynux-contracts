@@ -220,8 +220,8 @@ contract Task is Ownable {
             // And free the two honest nodes.
             tasks[taskId].isSuccess = compareRound(taskId, 0, 1);
             if (tasks[taskId].isSuccess) {
-                emitTaskFinishedEvent(taskId, 0);
                 settleNodeByDiscloseIndex(taskId, 1);
+                emitTaskFinishedEvent(taskId, 0);
             }
         } else if (tasks[taskId].resultDisclosedRounds.length == 3) {
             if (tasks[taskId].isSuccess) {
@@ -236,19 +236,24 @@ contract Task is Ownable {
             } else {
                 if (compareRound(taskId, 0, 2)) {
                     // 1 is cheating
-                    emitTaskFinishedEvent(taskId, 0);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 1);
+                    emitTaskFinishedEvent(taskId, 0);
                 } else if (compareRound(taskId, 1, 2)) {
                     // 0 is cheating
-                    emitTaskFinishedEvent(taskId, 1);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 0);
+                    emitTaskFinishedEvent(taskId, 1);
                 } else {
                     // 3 different results...
                     // Let's just abort the task for now...
                     abortTask(taskId);
                 }
+            }
+
+            if (tasks[taskId].resultNode == address(0)) {
+                // delete task when taskSuccess is not emited
+                delete tasks[taskId];
             }
         }
     }
@@ -289,7 +294,6 @@ contract Task is Ownable {
             nodeTasks[nodeAddress] = 0;
             node.finishTask(nodeAddress);
         }
-        delete tasks[taskId];
         emit TaskAborted(taskId);
     }
 

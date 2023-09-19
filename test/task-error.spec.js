@@ -53,6 +53,9 @@ contract("Task", (accounts) => {
 
         const nodeBal = await cnxInstance.balanceOf(accounts[2]);
         assert.equal(nodeBal.toNumber(), 0, "wrong node balance");
+
+        const task = await taskInstance.getTask(taskId);
+        assert.equal(task.id, 0, "task not deleted");
     });
 
     it("should slash the normal node and abort the task in the order: err, normal, err", async() => {
@@ -102,6 +105,9 @@ contract("Task", (accounts) => {
         const nodeBal = await cnxInstance.balanceOf(accounts[3]);
 
         assert.equal(nodeBal.toString(), "10000000000000000000", "wrong node balance");
+
+        const task = await taskInstance.getTask(taskId);
+        assert.equal(task.id, 0, "task not deleted");
     });
 
     it("should slash the normal node and abort the task in the order: err, err, normal", async() => {
@@ -146,6 +152,9 @@ contract("Task", (accounts) => {
 
         const nodeBal = await cnxInstance.balanceOf(accounts[4]);
         assert.equal(nodeBal.toString(), "20000000000000000000", "wrong node balance");
+
+        const task = await taskInstance.getTask(taskId);
+        assert.equal(task.id, 0, "task not deleted");
     });
 
     it("should slash the error node in the order: err, normal, normal", async() => {
@@ -388,5 +397,8 @@ contract("Task", (accounts) => {
 
         const nodeBal = await cnxInstance.balanceOf(accounts[4]);
         assert.equal(nodeBal.toString(), "50000000000000000000", "wrong node balance");
+
+        const task = await taskInstance.getTask(taskId);
+        assert.equal(task.id, 0, "task not deleted");
     });
 });
