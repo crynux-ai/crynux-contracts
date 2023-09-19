@@ -18,7 +18,7 @@ contract Task is Ownable {
         bytes32[] nonces;
         bytes[] results;
         uint[] resultDisclosedRounds;
-        uint resultRound;
+        address resultNode;
     }
 
     Node private node;
@@ -184,7 +184,7 @@ contract Task is Ownable {
             tasks[taskId].selectedNodes[round] == msg.sender,
             "Not selected node"
         );
-        require(tasks[taskId].resultRound == round, "Not result round");
+        require(tasks[taskId].resultNode == msg.sender, "Not result round");
 
         settleNodeByRound(taskId, round);
         delete tasks[taskId];
@@ -262,7 +262,7 @@ contract Task is Ownable {
         ];
         if (tasks[taskId].results[honestRound].length > 0) {
             // Success task
-            tasks[taskId].resultRound = honestRound;
+            tasks[taskId].resultNode = tasks[taskId].selectedNodes[honestRound];
             emit TaskSuccess(
                 taskId,
                 tasks[taskId].results[honestRound],
