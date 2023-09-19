@@ -18,6 +18,7 @@ contract Task is Ownable {
         bytes32[] nonces;
         bytes[] results;
         uint[] resultDisclosedRounds;
+        uint resultRound;
     }
 
     Node private node;
@@ -176,6 +177,19 @@ contract Task is Ownable {
         checkTaskResult(taskId);
     }
 
+    function reportTaskSuccess(uint256 taskId, uint round) public {
+        require(tasks[taskId].id != 0, "Task not exist");
+        require(round >= 0 && round < 3, "Round not exist");
+        require(
+            tasks[taskId].selectedNodes[round] == msg.sender,
+            "Not selected node"
+        );
+        require(tasks[taskId].resultRound == round, "Not result round");
+
+        settleNodeByRound(taskId, round);
+        delete tasks[taskId];
+    }
+
     function reportTaskError(uint256 taskId, uint round) public {
         require(tasks[taskId].id != 0, "Task not exist");
         require(round >= 0 && round < 3, "Round not exist");
@@ -206,10 +220,8 @@ contract Task is Ownable {
             // And free the two honest nodes.
             tasks[taskId].isSuccess = compareRound(taskId, 0, 1);
             if (tasks[taskId].isSuccess) {
-                settleNodeByDiscloseIndex(taskId, 0);
-                settleNodeByDiscloseIndex(taskId, 1);
-
                 emitTaskFinishedEvent(taskId, 0);
+                settleNodeByDiscloseIndex(taskId, 1);
             }
         } else if (tasks[taskId].resultDisclosedRounds.length == 3) {
             if (tasks[taskId].isSuccess) {
@@ -224,26 +236,20 @@ contract Task is Ownable {
             } else {
                 if (compareRound(taskId, 0, 2)) {
                     // 1 is cheating
-                    settleNodeByDiscloseIndex(taskId, 0);
+                    emitTaskFinishedEvent(taskId, 0);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 1);
-
-                    emitTaskFinishedEvent(taskId, 0);
                 } else if (compareRound(taskId, 1, 2)) {
                     // 0 is cheating
-                    settleNodeByDiscloseIndex(taskId, 1);
+                    emitTaskFinishedEvent(taskId, 1);
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 0);
-
-                    emitTaskFinishedEvent(taskId, 1);
                 } else {
                     // 3 different results...
                     // Let's just abort the task for now...
                     abortTask(taskId);
                 }
             }
-
-            delete tasks[taskId];
         }
     }
 
@@ -256,6 +262,7 @@ contract Task is Ownable {
         ];
         if (tasks[taskId].results[honestRound].length > 0) {
             // Success task
+            tasks[taskId].resultRound = honestRound;
             emit TaskSuccess(
                 taskId,
                 tasks[taskId].results[honestRound],
@@ -263,6 +270,7 @@ contract Task is Ownable {
             );
         } else {
             // Aborted task
+            settleNodeByDiscloseIndex(taskId, honestRoundIndex);
             emit TaskAborted(taskId);
         }
     }
@@ -281,7 +289,7 @@ contract Task is Ownable {
             nodeTasks[nodeAddress] = 0;
             node.finishTask(nodeAddress);
         }
-
+        delete tasks[taskId];
         emit TaskAborted(taskId);
     }
 
@@ -299,13 +307,8 @@ contract Task is Ownable {
         return compareResult(resultA, resultB, distanceThreshold);
     }
 
-    function settleNodeByDiscloseIndex(
-        uint256 taskId,
-        uint discloseIndex
-    ) internal {
-        address nodeAddress = tasks[taskId].selectedNodes[
-            tasks[taskId].resultDisclosedRounds[discloseIndex]
-        ];
+    function settleNodeByRound(uint256 taskId, uint round) internal {
+        address nodeAddress = tasks[taskId].selectedNodes[round];
 
         // Transfer task fee to the node
         require(
@@ -316,6 +319,13 @@ contract Task is Ownable {
         // Free the node
         nodeTasks[nodeAddress] = 0;
         node.finishTask(nodeAddress);
+    }
+
+    function settleNodeByDiscloseIndex(
+        uint256 taskId,
+        uint discloseIndex
+    ) internal {
+        settleNodeByRound(taskId, tasks[taskId].resultDisclosedRounds[discloseIndex]);
     }
 
     function punishNodeByDiscloseIndex(
