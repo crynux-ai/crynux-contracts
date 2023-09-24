@@ -202,6 +202,7 @@ contract Task is Ownable {
         uint256 errCommitment = 1;
         tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
         tasks[taskId].resultDisclosedRounds.push(round); // Set to result disclosed state, the result is a special zero value
+        nodeTasks[msg.sender] = 0;
 
         if (
             tasks[taskId].commitments[0] != 0 &&
@@ -313,7 +314,6 @@ contract Task is Ownable {
 
     function settleNodeByRound(uint256 taskId, uint round) internal {
         address nodeAddress = tasks[taskId].selectedNodes[round];
-
         // Transfer task fee to the node
         require(
             cnxToken.transfer(nodeAddress, taskFeePerNode),
