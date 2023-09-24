@@ -30,9 +30,13 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
+        let nullTaskId = await taskInstance.getNodeTask(accounts[3]);
+        assert.equal(nullTaskId, 0, "wrong task id");
 
         // Error
         const tx = await taskInstance.reportTaskError(taskId, nodeRounds[accounts[4]], {from: accounts[4]});
+        nullTaskId = await taskInstance.getNodeTask(accounts[4]);
+        assert.equal(nullTaskId, 0, "wrong task id");
 
         truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
             return ev.taskId.eq(taskId);
@@ -72,6 +76,8 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        let nullTaskId = await await taskInstance.getNodeTask(accounts[2])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         // Normal
         const [commitment, nonce] = getCommitment(result);
@@ -84,6 +90,8 @@ contract("Task", (accounts) => {
 
         // Error
         const tx = await taskInstance.reportTaskError(taskId, nodeRounds[accounts[4]], {from: accounts[4]});
+        nullTaskId = await await taskInstance.getNodeTask(accounts[4])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
             return ev.taskId.eq(taskId);
@@ -123,9 +131,14 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        let nullTaskId = await await taskInstance.getNodeTask(accounts[2])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         // Error
         const tx = await taskInstance.reportTaskError(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
+        nullTaskId = await await taskInstance.getNodeTask(accounts[3])
+        assert.equal(nullTaskId, 0, "wrong task id")
+
 
         truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
             return ev.taskId.eq(taskId);
@@ -170,6 +183,8 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        let nullTaskId = await await taskInstance.getNodeTask(accounts[2])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         // Normal
         const [commitment, nonce] = getCommitment(result);
@@ -249,6 +264,8 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
+        let nullTaskId = await await taskInstance.getNodeTask(accounts[3])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         // Normal
         const [commitment2, nonce2] = getCommitment(result);
@@ -329,6 +346,8 @@ contract("Task", (accounts) => {
 
         // Error
         let tx = await taskInstance.reportTaskError(taskId, nodeRounds[accounts[4]], {from: accounts[4]});
+        let nullTaskId = await await taskInstance.getNodeTask(accounts[4])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         truffleAssert.eventEmitted(tx, 'TaskResultCommitmentsReady', (ev) => {
             return ev.taskId.eq(taskId);
@@ -381,9 +400,13 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        let nullTaskId = await await taskInstance.getNodeTask(accounts[2])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         // Error
         let tx = await taskInstance.reportTaskError(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
+        nullTaskId = await await taskInstance.getNodeTask(accounts[3])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
             return ev.taskId.eq(taskId);
@@ -391,6 +414,8 @@ contract("Task", (accounts) => {
 
         // Error
         await taskInstance.reportTaskError(taskId, nodeRounds[accounts[4]], {from: accounts[4]});
+        nullTaskId = await await taskInstance.getNodeTask(accounts[4])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
         const nodeStatus = await nodeInstance.getNodeStatus(accounts[4]);
         assert.equal(nodeStatus.toNumber(), 1, "wrong node status");
