@@ -232,7 +232,7 @@ contract("Task", (accounts) => {
         const nodeBal = await cnxInstance.balanceOf(accounts[2]);
         assert.equal(nodeBal.toString(), "20000000000000000000", "wrong node balance");
 
-        await taskInstance.reportTaskSuccess(
+        await taskInstance.reportResultsUploaded(
             taskId,
             nodeRounds[accounts[3]],
             {from: accounts[3]}
@@ -304,7 +304,7 @@ contract("Task", (accounts) => {
         const nodeBal = await cnxInstance.balanceOf(accounts[3]);
         assert.equal(nodeBal.toString(), "30000000000000000000", "wrong node balance");
 
-        await taskInstance.reportTaskSuccess(
+        await taskInstance.reportResultsUploaded(
             taskId,
             nodeRounds[accounts[2]],
             {from: accounts[2]}
@@ -377,7 +377,7 @@ contract("Task", (accounts) => {
         const nodeBal = await cnxInstance.balanceOf(accounts[4]);
         assert.equal(nodeBal.toString(), "40000000000000000000", "wrong node balance");
 
-        await taskInstance.reportTaskSuccess(
+        await taskInstance.reportResultsUploaded(
             taskId,
             nodeRounds[accounts[2]],
             {from: accounts[2]}

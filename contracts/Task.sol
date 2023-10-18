@@ -177,7 +177,19 @@ contract Task is Ownable {
         checkTaskResult(taskId);
     }
 
-    function reportTaskSuccess(uint256 taskId, uint round) public {
+    function tryDeleteTask(uint256 taskId) internal {
+        // Delete task when all nodes were settled or slashed.
+        require(tasks[taskId].id != 0, "Task not exist");
+
+        for (uint i = 0; i < 3; i++) {
+            if (nodeTasks[tasks[taskId].selectedNodes[i]] != 0) {
+                return;
+            }
+        }
+        delete tasks[taskId];
+    }
+
+    function reportResultsUploaded(uint256 taskId, uint round) public {
         require(tasks[taskId].id != 0, "Task not exist");
         require(round >= 0 && round < 3, "Round not exist");
         require(
@@ -187,7 +199,7 @@ contract Task is Ownable {
         require(tasks[taskId].resultNode == msg.sender, "Not result round");
 
         settleNodeByRound(taskId, round);
-        delete tasks[taskId];
+        tryDeleteTask(taskId);
     }
 
     function reportTaskError(uint256 taskId, uint round) public {
@@ -252,10 +264,7 @@ contract Task is Ownable {
                 }
             }
 
-            if (tasks[taskId].resultNode == address(0)) {
-                // delete task when taskSuccess is not emited
-                delete tasks[taskId];
-            }
+            tryDeleteTask(taskId);
         }
     }
 
@@ -329,7 +338,10 @@ contract Task is Ownable {
         uint256 taskId,
         uint discloseIndex
     ) internal {
-        settleNodeByRound(taskId, tasks[taskId].resultDisclosedRounds[discloseIndex]);
+        settleNodeByRound(
+            taskId,
+            tasks[taskId].resultDisclosedRounds[discloseIndex]
+        );
     }
 
     function punishNodeByDiscloseIndex(
