@@ -126,6 +126,17 @@ contract("Task", (accounts) => {
         const availableNodes = await nodeInstance.availableNodes();
         assert.equal(availableNodes, 0, "Wrong number of available nodes");
 
+        await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        node2Status = await nodeInstance.getNodeStatus(accounts[2]);
+        assert.equal(node2Status.toNumber(), 5, "wrong node status for node 2");
+        bal = await cnxInstance.balanceOf(accounts[2]);
+        expectedBalance = nodeBalances[0].add(new BN(toWei("10", "ether")));
+        assert.equal(
+            bal.toString(),
+            expectedBalance.toString(),
+            "Task fee not received"
+        )
+
         await taskInstance.discloseTaskResult(
             taskId,
             nodeRounds[accounts[4]],
@@ -146,17 +157,6 @@ contract("Task", (accounts) => {
 
         const node4Status = await nodeInstance.getNodeStatus(accounts[4]);
         assert.equal(node4Status.toNumber(), 1, "wrong node status for node 4");
-
-        await taskInstance.reportTaskSuccess(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        node2Status = await nodeInstance.getNodeStatus(accounts[2]);
-        assert.equal(node2Status.toNumber(), 5, "wrong node status for node 2");
-        bal = await cnxInstance.balanceOf(accounts[2]);
-        expectedBalance = nodeBalances[0].add(new BN(toWei("10", "ether")));
-        assert.equal(
-            bal.toString(),
-            expectedBalance.toString(),
-            "Task fee not received"
-        )
 
         const taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, '0', "task not deleted");
@@ -250,7 +250,7 @@ contract("Task", (accounts) => {
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
-        await taskInstance.reportTaskSuccess(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
         const availableNodesAfterSuccess = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node not slashed");
 
@@ -356,7 +356,7 @@ contract("Task", (accounts) => {
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
-        await taskInstance.reportTaskSuccess(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
+        await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
         const availableNodesAfterSuccess = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node free");
 
@@ -474,7 +474,7 @@ contract("Task", (accounts) => {
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
-        await taskInstance.reportTaskSuccess(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
+        await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
         const availableNodesAfterSuccess = await nodeInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node free");
 
