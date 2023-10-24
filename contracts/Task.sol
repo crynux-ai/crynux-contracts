@@ -365,7 +365,7 @@ contract Task is Ownable {
         uint64 c = uint64(a ^ b);
         uint64 res = 0;
         while (c > 0) {
-            res += c ^ 1;
+            res += c & 1;
             c = c >> 1;
         }
         return uint(res);
