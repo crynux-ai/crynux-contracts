@@ -53,10 +53,14 @@ contract("Task", (accounts) => {
             assert.match(e.toString(), /Invalid result/, "Wrong reason: " + e.toString());
         }
 
-        const result = "0x01020304050607080807060504030201";
+        const results = [
+            "0xfcd29a0c1f1a1c9bb4b8bbb6d5124a29b9d412353993836f8f87f7699830a499e59ca34cb4691cf2f2c391276149cfb2",
+            "0xfcd29a0c1f1a1c9bb4b8bbb6d5124a29b9d416343993836f8f87f72998b0a499e59ca34cb4691cf2f2c39126e149cfb2",
+            "0xfcd29a0c1f1a1c9bb4b8bbb6d5124a29b9d416343993836f8f87f7699830a499e59ca34cb4691cf2f2c391276149cfb2"
+        ];
 
         for(let i=0; i<3; i++) {
-            const [commitment, nonce] = getCommitment(result);
+            const [commitment, nonce] = getCommitment(results[i]);
             await taskInstance.submitTaskResultCommitment(
                 taskId,
                 nodeRounds[accounts[2 + i]],
@@ -98,14 +102,14 @@ contract("Task", (accounts) => {
         await taskInstance.discloseTaskResult(
             taskId,
             nodeRounds[accounts[2]],
-            result,
+            results[0],
             {from: accounts[2]}
         );
 
         const tx = await taskInstance.discloseTaskResult(
             taskId,
             nodeRounds[accounts[3]],
-            result,
+            results[1],
             {from: accounts[3]}
         );
 
@@ -140,7 +144,7 @@ contract("Task", (accounts) => {
         await taskInstance.discloseTaskResult(
             taskId,
             nodeRounds[accounts[4]],
-            result,
+            results[2],
             {from: accounts[4]}
         );
 
