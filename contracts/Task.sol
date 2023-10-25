@@ -19,6 +19,7 @@ contract Task is Ownable {
         bytes[] results;
         uint[] resultDisclosedRounds;
         address resultNode;
+        bool aborted;
     }
 
     Node private node;
@@ -78,6 +79,7 @@ contract Task is Ownable {
         taskInfo.commitments = new bytes32[](3);
         taskInfo.nonces = new bytes32[](3);
         taskInfo.results = new bytes[](3);
+        taskInfo.aborted = false;
 
         tasks[taskInfo.id] = taskInfo;
 
@@ -123,6 +125,7 @@ contract Task is Ownable {
             "Not selected node"
         );
         require(tasks[taskId].commitments[round] == 0, "Already submitted");
+        require(!tasks[taskId].aborted, "Task is aborted");
 
         require(
             nonce != tasks[taskId].nonces[0] &&
@@ -134,13 +137,24 @@ contract Task is Ownable {
         tasks[taskId].commitments[round] = commitment;
         tasks[taskId].nonces[round] = nonce;
 
-        if (
-            tasks[taskId].commitments[0] != 0 &&
-            tasks[taskId].commitments[1] != 0 &&
-            tasks[taskId].commitments[2] != 0
-        ) {
+        if (isCommitmentReady(taskId)) {
             emit TaskResultCommitmentsReady(taskId);
         }
+    }
+
+    function isCommitmentReady(uint256 taskId) internal view returns (bool) {
+        uint commitmentCount = 0;
+        uint errCount = 0;
+        for (uint i = 0; i < 3; i++) {
+            bytes32 commitment = tasks[taskId].commitments[i];
+            if (commitment != 0) {
+                commitmentCount += 1;
+                if (commitment == bytes32(uint256(1))) {
+                    errCount += 1;
+                }
+            }
+        }
+        return commitmentCount == 3 && errCount < 2;
     }
 
     function discloseTaskResult(
@@ -162,6 +176,7 @@ contract Task is Ownable {
                 tasks[taskId].commitments[2] != 0,
             "Commitments not ready"
         );
+        require(!tasks[taskId].aborted, "Task is aborted");
 
         require(
             tasks[taskId].commitments[round] ==
@@ -197,6 +212,7 @@ contract Task is Ownable {
             "Not selected node"
         );
         require(tasks[taskId].resultNode == msg.sender, "Not result round");
+        require(!tasks[taskId].aborted, "Task is aborted");
 
         settleNodeByRound(taskId, round);
         tryDeleteTask(taskId);
@@ -215,11 +231,7 @@ contract Task is Ownable {
         tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
         tasks[taskId].resultDisclosedRounds.push(round); // Set to result disclosed state, the result is a special zero value
 
-        if (
-            tasks[taskId].commitments[0] != 0 &&
-            tasks[taskId].commitments[1] != 0 &&
-            tasks[taskId].commitments[2] != 0
-        ) {
+        if (isCommitmentReady(taskId)) {
             emit TaskResultCommitmentsReady(taskId);
         }
 
@@ -286,6 +298,14 @@ contract Task is Ownable {
             // Aborted task
             settleNodeByDiscloseIndex(taskId, honestRoundIndex);
             emit TaskAborted(taskId);
+            tasks[taskId].aborted = true;
+            for (uint i = 0; i < 3; i++) {
+                bytes32 commitment = tasks[taskId].commitments[i];
+                if (commitment != 0 && commitment != bytes32(uint256(1))) {
+                    punishNodeByRound(taskId, i);
+                }
+            }
+            tryDeleteTask(taskId);
         }
     }
 
@@ -304,6 +324,7 @@ contract Task is Ownable {
             node.finishTask(nodeAddress);
         }
         emit TaskAborted(taskId);
+        tasks[taskId].aborted = true;
     }
 
     function compareRound(
@@ -343,22 +364,27 @@ contract Task is Ownable {
         );
     }
 
-    function punishNodeByDiscloseIndex(
-        uint256 taskId,
-        uint discloseIndex
-    ) internal {
-        // Return the task fee to user
+    function punishNodeByRound(uint256 taskId, uint round) internal {
+        address nodeAddress = tasks[taskId].selectedNodes[round];
+        // Transfer task fee to the node
         require(
             cnxToken.transfer(tasks[taskId].creator, taskFeePerNode),
             "Token transfer failed"
         );
 
-        address nodeAddress = tasks[taskId].selectedNodes[
-            tasks[taskId].resultDisclosedRounds[discloseIndex]
-        ];
+        // Free the node
         nodeTasks[nodeAddress] = 0;
-
         node.slash(nodeAddress);
+    }
+
+    function punishNodeByDiscloseIndex(
+        uint256 taskId,
+        uint discloseIndex
+    ) internal {
+        punishNodeByRound(
+            taskId,
+            tasks[taskId].resultDisclosedRounds[discloseIndex]
+        );
     }
 
     function hamming(bytes8 a, bytes8 b) internal pure returns (uint) {
