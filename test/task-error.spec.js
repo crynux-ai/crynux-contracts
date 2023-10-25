@@ -34,7 +34,9 @@ contract("Task", (accounts) => {
         // Error
         const tx = await taskInstance.reportTaskError(taskId, nodeRounds[accounts[4]], {from: accounts[4]});
 
-        let nullTaskId = await taskInstance.getNodeTask(accounts[3]);
+        let nullTaskId = await taskInstance.getNodeTask(accounts[2]);
+        assert.equal(nullTaskId, 0, "wrong task id");
+        nullTaskId = await taskInstance.getNodeTask(accounts[3]);
         assert.equal(nullTaskId, 0, "wrong task id");
         nullTaskId = await taskInstance.getNodeTask(accounts[4]);
         assert.equal(nullTaskId, 0, "wrong task id");
@@ -44,16 +46,6 @@ contract("Task", (accounts) => {
         });
 
         let nodeStatus = await nodeInstance.getNodeStatus(accounts[2]);
-        assert.equal(nodeStatus.toNumber(), 2, "wrong node status");
-
-        await taskInstance.discloseTaskResult(
-            taskId,
-            nodeRounds[accounts[2]],
-            result,
-            {from: accounts[2]}
-        );
-
-        nodeStatus = await nodeInstance.getNodeStatus(accounts[2]);
         assert.equal(nodeStatus.toNumber(), 0, "wrong node status");
 
         const nodeBal = await cnxInstance.balanceOf(accounts[2]);
@@ -92,7 +84,8 @@ contract("Task", (accounts) => {
 
         let nullTaskId = await await taskInstance.getNodeTask(accounts[2])
         assert.equal(nullTaskId, 0, "wrong task id")
-
+        nullTaskId = await await taskInstance.getNodeTask(accounts[3])
+        assert.equal(nullTaskId, 0, "wrong task id")
         nullTaskId = await await taskInstance.getNodeTask(accounts[4])
         assert.equal(nullTaskId, 0, "wrong task id")
 
@@ -101,16 +94,6 @@ contract("Task", (accounts) => {
         });
 
         let nodeStatus = await nodeInstance.getNodeStatus(accounts[3]);
-        assert.equal(nodeStatus.toNumber(), 2, "wrong node status");
-
-        await taskInstance.discloseTaskResult(
-            taskId,
-            nodeRounds[accounts[3]],
-            result,
-            {from: accounts[3]}
-        );
-
-        nodeStatus = await nodeInstance.getNodeStatus(accounts[3]);
         assert.equal(nodeStatus.toNumber(), 0, "wrong node status");
 
         const nodeBal = await cnxInstance.balanceOf(accounts[3]);
@@ -121,7 +104,7 @@ contract("Task", (accounts) => {
         assert.equal(task.id, 0, "task not deleted");
     });
 
-    it("should slash the normal node and abort the task in the order: err, err, normal", async() => {
+    it("should reject the normal node and abort the task in the order: err, err, normal", async() => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
@@ -149,25 +132,26 @@ contract("Task", (accounts) => {
 
         // Normal
         const [commitment, nonce] = getCommitment(result);
-        await taskInstance.submitTaskResultCommitment(
-                taskId,
-                nodeRounds[accounts[4]],
-                commitment,
-                nonce,
-                {from: accounts[4]});
+        try {
+            await taskInstance.submitTaskResultCommitment(
+                    taskId,
+                    nodeRounds[accounts[4]],
+                    commitment,
+                    nonce,
+                    {from: accounts[4]});
+        } catch(e) {
+            assert.match(e.toString(), /Task is aborted/, "Wrong reason: " + e.toString());
+        }
+        await taskInstance.reportTaskError(taskId, nodeRounds[accounts[4]], {from: accounts[4]});
+        nullTaskId = await await taskInstance.getNodeTask(accounts[4])
+        assert.equal(nullTaskId, 0, "wrong task id")
 
-        await taskInstance.discloseTaskResult(
-            taskId,
-            nodeRounds[accounts[4]],
-            result,
-            {from: accounts[4]}
-        );
-
-        const nodeStatus = await nodeInstance.getNodeStatus(accounts[4]);
-        assert.equal(nodeStatus.toNumber(), 0, "wrong node status");
-
-        const nodeBal = await cnxInstance.balanceOf(accounts[4]);
-        assert.equal(nodeBal.toString(), "20000000000000000000", "wrong node balance");
+        let nodeStatus = await nodeInstance.getNodeStatus(accounts[2]);
+        assert.equal(nodeStatus.toNumber(), 1, "wrong node status");
+        nodeStatus = await nodeInstance.getNodeStatus(accounts[3]);
+        assert.equal(nodeStatus.toNumber(), 1, "wrong node status");
+        nodeStatus = await nodeInstance.getNodeStatus(accounts[4]);
+        assert.equal(nodeStatus.toNumber(), 1, "wrong node status");
 
         const task = await taskInstance.getTask(taskId);
         assert.equal(task.id, 0, "task not deleted");
@@ -178,7 +162,6 @@ contract("Task", (accounts) => {
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
 
-        await prepareNode(accounts[4], cnxInstance, nodeInstance);
         await prepareUser(accounts[1], cnxInstance, taskInstance);
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
@@ -381,7 +364,7 @@ contract("Task", (accounts) => {
         assert.equal(nodeStatus.toNumber(), 0, "wrong node status");
 
         const nodeBal = await cnxInstance.balanceOf(accounts[4]);
-        assert.equal(nodeBal.toString(), "40000000000000000000", "wrong node balance");
+        assert.equal(nodeBal.toString(), "50000000000000000000", "wrong node balance");
 
         await taskInstance.reportResultsUploaded(
             taskId,
@@ -428,7 +411,7 @@ contract("Task", (accounts) => {
         assert.equal(nodeStatus.toNumber(), 1, "wrong node status");
 
         const nodeBal = await cnxInstance.balanceOf(accounts[4]);
-        assert.equal(nodeBal.toString(), "50000000000000000000", "wrong node balance");
+        assert.equal(nodeBal.toString(), "60000000000000000000", "wrong node balance");
 
         const task = await taskInstance.getTask(taskId);
         assert.equal(task.id, 0, "task not deleted");

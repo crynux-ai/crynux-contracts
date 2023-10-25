@@ -17,7 +17,7 @@ contract("Task", (accounts) => {
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
-        const results = ["0x0102030405060708", "0x0102030405060717", "0x0102030405060770"];
+        const results = ["0x0102030405060708", "0x010203040506f7f8", "0x0102030405060807"];
 
         for(let i= 0; i < 3; i++) {
             const [commitment, nonce] = getCommitment(results[i]);
