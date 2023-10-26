@@ -27,9 +27,12 @@ contract Task is Ownable {
     mapping(uint => TaskInfo) private tasks;
     mapping(address => uint256) private nodeTasks;
     uint256 private nextTaskId;
-    uint256 private totalTasks;
+
     uint256 private taskFeePerNode;
     uint private distanceThreshold;
+
+    uint256 private numSuccessTasks;
+    uint256 private numAbortedTasks;
 
     event TaskCreated(
         uint256 taskId,
@@ -49,6 +52,8 @@ contract Task is Ownable {
         taskFeePerNode = 10 * 10 ** 18;
         nextTaskId = 1;
         distanceThreshold = 5;
+        numSuccessTasks = 0;
+        numAbortedTasks = 0;
     }
 
     function createTask(bytes32 taskHash, bytes32 dataHash) public {
@@ -289,6 +294,8 @@ contract Task is Ownable {
         if (tasks[taskId].results[honestRound].length > 0) {
             // Success task
             tasks[taskId].resultNode = tasks[taskId].selectedNodes[honestRound];
+
+            numSuccessTasks++;
             emit TaskSuccess(
                 taskId,
                 tasks[taskId].results[honestRound],
@@ -297,7 +304,10 @@ contract Task is Ownable {
         } else {
             // Aborted task
             settleNodeByDiscloseIndex(taskId, honestRoundIndex);
+
+            numAbortedTasks++;
             emit TaskAborted(taskId);
+
             tasks[taskId].aborted = true;
             for (uint i = 0; i < 3; i++) {
                 bytes32 commitment = tasks[taskId].commitments[i];
@@ -323,6 +333,8 @@ contract Task is Ownable {
             nodeTasks[nodeAddress] = 0;
             node.finishTask(nodeAddress);
         }
+
+        numAbortedTasks++;
         emit TaskAborted(taskId);
         tasks[taskId].aborted = true;
     }
@@ -507,5 +519,17 @@ contract Task is Ownable {
 
     function getNodeTask(address nodeAddress) public view returns (uint256) {
         return nodeTasks[nodeAddress];
+    }
+
+    function totalTasks() public view returns (uint256) {
+        return nextTaskId - 1;
+    }
+
+    function totalSuccessTasks() public view returns (uint256) {
+        return numSuccessTasks;
+    }
+
+    function totalAbortedTasks() public view returns (uint256) {
+        return numAbortedTasks;
     }
 }
