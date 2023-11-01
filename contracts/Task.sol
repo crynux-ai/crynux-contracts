@@ -10,6 +10,8 @@ contract Task is Ownable {
     struct TaskInfo {
         uint256 id;
         address creator;
+        uint256 createTime;
+        uint256 balance;
         bytes32 taskHash;
         bytes32 dataHash;
         bool isSuccess;
@@ -30,6 +32,7 @@ contract Task is Ownable {
 
     uint256 private taskFeePerNode;
     uint private distanceThreshold;
+    uint256 private timeout;
 
     uint256 private numSuccessTasks;
     uint256 private numAbortedTasks;
@@ -52,6 +55,7 @@ contract Task is Ownable {
         taskFeePerNode = 10 * 10 ** 18;
         nextTaskId = 1;
         distanceThreshold = 5;
+        timeout = 15 minutes;
         numSuccessTasks = 0;
         numAbortedTasks = 0;
     }
@@ -78,6 +82,8 @@ contract Task is Ownable {
 
         taskInfo.id = nextTaskId++;
         taskInfo.creator = msg.sender;
+        taskInfo.createTime = block.timestamp;
+        taskInfo.balance = taskFee;
         taskInfo.taskHash = taskHash;
         taskInfo.dataHash = dataHash;
         taskInfo.isSuccess = false;
@@ -243,6 +249,47 @@ contract Task is Ownable {
         checkTaskResult(taskId);
     }
 
+    function cancelTask(uint256 taskId) public {
+        require(tasks[taskId].id != 0, "Task not exist");
+        bool callerValid = false;
+        if (msg.sender == tasks[taskId].creator) {
+            callerValid = true;
+        } else {
+            for (uint i = 0; i < 3; i++) {
+                if (tasks[taskId].selectedNodes[i] == msg.sender) {
+                    callerValid = true;
+                    break;
+                }
+            }
+        }
+        require(callerValid, "Unauthorized to cancel task");
+        require(
+            block.timestamp > tasks[taskId].createTime + timeout,
+            "Task has not exceeded the deadline yet"
+        );
+        // return unuses task fee to task creator
+        if (tasks[taskId].balance > 0) {
+            require(
+                cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
+                "Token transfer failed"
+            );
+            tasks[taskId].balance = 0;
+        }
+
+        if (!tasks[taskId].aborted) {
+            emit TaskAborted(taskId);
+        }
+        // free unfinished nodes and delete the task
+        for (uint i = 0; i < 3; i++) {
+            address nodeAddress = tasks[taskId].selectedNodes[i];
+            if (nodeTasks[nodeAddress] != 0) {
+                nodeTasks[nodeAddress] = 0;
+                node.finishTask(nodeAddress);
+            }
+        }
+        delete tasks[taskId];
+    }
+
     function checkTaskResult(uint256 taskId) internal {
         if (tasks[taskId].resultDisclosedRounds.length == 2) {
             // If no node is cheating, we can already give the result back to the user.
@@ -325,6 +372,7 @@ contract Task is Ownable {
             cnxToken.transfer(tasks[taskId].creator, taskFeePerNode * 3),
             "Token transfer failed"
         );
+        tasks[taskId].balance -= taskFeePerNode * 3;
 
         // Free the nodes
         for (uint i = 0; i < 3; i++) {
@@ -360,6 +408,7 @@ contract Task is Ownable {
             cnxToken.transfer(nodeAddress, taskFeePerNode),
             "Token transfer failed"
         );
+        tasks[taskId].balance -= taskFeePerNode;
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
@@ -383,6 +432,7 @@ contract Task is Ownable {
             cnxToken.transfer(tasks[taskId].creator, taskFeePerNode),
             "Token transfer failed"
         );
+        tasks[taskId].balance -= taskFeePerNode;
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
@@ -511,6 +561,10 @@ contract Task is Ownable {
 
     function updateDistanceThreshold(uint threshold) public onlyOwner {
         distanceThreshold = threshold;
+    }
+
+    function updateTimeout(uint t) public onlyOwner() {
+        timeout = t;
     }
 
     function getTask(uint256 taskId) public view returns (TaskInfo memory) {
