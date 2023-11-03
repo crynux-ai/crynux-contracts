@@ -277,7 +277,7 @@ contract Task is Ownable {
         }
 
         if (!tasks[taskId].aborted) {
-            emit TaskAborted(taskId, "Task 1`Cancelled");
+            emit TaskAborted(taskId, "Task Cancelled");
         }
         // free unfinished nodes and delete the task
         for (uint i = 0; i < 3; i++) {
