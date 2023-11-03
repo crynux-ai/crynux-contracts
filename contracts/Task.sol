@@ -10,8 +10,6 @@ contract Task is Ownable {
     struct TaskInfo {
         uint256 id;
         address creator;
-        uint256 createTime;
-        uint256 balance;
         bytes32 taskHash;
         bytes32 dataHash;
         bool isSuccess;
@@ -22,6 +20,8 @@ contract Task is Ownable {
         uint[] resultDisclosedRounds;
         address resultNode;
         bool aborted;
+        uint256 timeout;
+        uint256 balance;
     }
 
     Node private node;
@@ -47,7 +47,7 @@ contract Task is Ownable {
     );
     event TaskResultCommitmentsReady(uint256 taskId);
     event TaskSuccess(uint256 taskId, bytes result, address indexed resultNode);
-    event TaskAborted(uint256 taskId);
+    event TaskAborted(uint256 taskId, string reason);
 
     constructor(Node nodeInstance, IERC20 tokenInstance) {
         node = nodeInstance;
@@ -82,7 +82,7 @@ contract Task is Ownable {
 
         taskInfo.id = nextTaskId++;
         taskInfo.creator = msg.sender;
-        taskInfo.createTime = block.timestamp;
+        taskInfo.timeout = block.timestamp + timeout;
         taskInfo.balance = taskFee;
         taskInfo.taskHash = taskHash;
         taskInfo.dataHash = dataHash;
@@ -264,7 +264,7 @@ contract Task is Ownable {
         }
         require(callerValid, "Unauthorized to cancel task");
         require(
-            block.timestamp > tasks[taskId].createTime + timeout,
+            block.timestamp > tasks[taskId].timeout,
             "Task has not exceeded the deadline yet"
         );
         // return unuses task fee to task creator
@@ -277,7 +277,7 @@ contract Task is Ownable {
         }
 
         if (!tasks[taskId].aborted) {
-            emit TaskAborted(taskId);
+            emit TaskAborted(taskId, "Task 1`Cancelled");
         }
         // free unfinished nodes and delete the task
         for (uint i = 0; i < 3; i++) {
@@ -353,7 +353,7 @@ contract Task is Ownable {
             settleNodeByDiscloseIndex(taskId, honestRoundIndex);
 
             numAbortedTasks++;
-            emit TaskAborted(taskId);
+            emit TaskAborted(taskId, "Task error reported");
 
             tasks[taskId].aborted = true;
             for (uint i = 0; i < 3; i++) {
@@ -383,7 +383,7 @@ contract Task is Ownable {
         }
 
         numAbortedTasks++;
-        emit TaskAborted(taskId);
+        emit TaskAborted(taskId, "Task result illegal");
         tasks[taskId].aborted = true;
     }
 
