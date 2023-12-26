@@ -195,4 +195,8 @@ contract Node is Ownable {
             return NODE_STATUS_QUIT;
         }
     }
+
+    function getAllNodeAddresses() public view returns (address[] memory) {
+        return nodeMap.keys();
+    }
 }
