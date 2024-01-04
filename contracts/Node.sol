@@ -379,4 +379,8 @@ contract Node is Ownable {
         require(length > 0, "No available nodes");
         return _availableNodes.at(index % length);
     }
+
+    function getAllNodeAddresses() public view returns (address[] memory) {
+        return nodeMap.keys();
+    }
 }
