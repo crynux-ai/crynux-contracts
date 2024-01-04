@@ -36,7 +36,7 @@ contract Node is Ownable {
     }
 
     // store all nodes info
-    uint private _totalNodes = 0;
+    EnumerableSet.AddressSet private allNodes;
     mapping(address => NodeInfo) private nodesMap;
 
     // store all available nodes;
@@ -61,11 +61,15 @@ contract Node is Ownable {
     }
 
     function totalNodes() public view returns (uint) {
-        return _totalNodes;
+        return allNodes.length();
     }
 
     function availableNodes() public view returns (uint) {
         return _availableNodes.length();
+    }
+
+    function getAllNodeAddresses() public view returns (address[] memory) {
+        return allNodes.values();
     }
 
     function getAvailableGPUs() public view returns (GPUInfo[] memory) {
@@ -129,11 +133,11 @@ contract Node is Ownable {
 
     function removeNode(address nodeAddress) private {
         delete nodesMap[nodeAddress];
-        _totalNodes--;
+        allNodes.remove(nodeAddress);
     }
 
     function join(string calldata gpuName, uint gpuVram) public {
-        require(_totalNodes < maxNodesAllowed, "Network is full");
+        require(allNodes.length() < maxNodesAllowed, "Network is full");
         require(
             getNodeStatus(msg.sender) == NODE_STATUS_QUIT,
             "Node already joined"
@@ -168,7 +172,7 @@ contract Node is Ownable {
             gpuID,
             GPUInfo(gpuName, gpuVram)
         );
-        _totalNodes++;
+        allNodes.add(msg.sender);
 
         markNodeAvailable(msg.sender);
     }
@@ -378,9 +382,5 @@ contract Node is Ownable {
         uint length = _availableNodes.length();
         require(length > 0, "No available nodes");
         return _availableNodes.at(index % length);
-    }
-
-    function getAllNodeAddresses() public view returns (address[] memory) {
-        return nodeMap.keys();
     }
 }
