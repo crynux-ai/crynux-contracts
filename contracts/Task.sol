@@ -5,13 +5,22 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./Node.sol";
+import "./Random.sol";
+import "./Hamming.sol";
 
 contract Task is Ownable {
+    using Random for Random.Generator;
+
+    uint private TASK_TYPE_SD = 0;
+    uint private TASK_TYPE_LLM = 1;
+
     struct TaskInfo {
         uint256 id;
+        uint taskType;
         address creator;
         bytes32 taskHash;
         bytes32 dataHash;
+        uint vramLimit;
         bool isSuccess;
         address[] selectedNodes;
         bytes32[] commitments;
@@ -37,6 +46,8 @@ contract Task is Ownable {
     uint256 private numSuccessTasks;
     uint256 private numAbortedTasks;
 
+    Random.Generator private generator;
+
     event TaskCreated(
         uint256 taskId,
         address indexed creator,
@@ -60,9 +71,18 @@ contract Task is Ownable {
         numAbortedTasks = 0;
     }
 
-    function createTask(bytes32 taskHash, bytes32 dataHash) public {
+    function createTask(
+        uint taskType,
+        bytes32 taskHash,
+        bytes32 dataHash,
+        uint vramLimit
+    ) public {
         uint256 taskFee = taskFeePerNode * 3;
 
+        require(
+            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM,
+            "Invalid task type"
+        );
         require(
             cnxToken.balanceOf(msg.sender) >= taskFee,
             "Not enough tokens for task"
@@ -71,12 +91,6 @@ contract Task is Ownable {
             cnxToken.allowance(msg.sender, address(this)) >= taskFee,
             "Not enough allowance for task"
         );
-        require(node.availableNodes() >= 3, "Not enough nodes");
-
-        require(
-            cnxToken.transferFrom(msg.sender, address(this), taskFee),
-            "Task fee payment failed"
-        );
 
         TaskInfo memory taskInfo;
 
@@ -84,8 +98,10 @@ contract Task is Ownable {
         taskInfo.creator = msg.sender;
         taskInfo.timeout = block.timestamp + timeout;
         taskInfo.balance = taskFee;
+        taskInfo.taskType = taskType;
         taskInfo.taskHash = taskHash;
         taskInfo.dataHash = dataHash;
+        taskInfo.vramLimit = vramLimit;
         taskInfo.isSuccess = false;
         taskInfo.commitments = new bytes32[](3);
         taskInfo.nonces = new bytes32[](3);
@@ -94,10 +110,23 @@ contract Task is Ownable {
 
         tasks[taskInfo.id] = taskInfo;
 
+        require(
+            cnxToken.transferFrom(msg.sender, address(this), taskFee),
+            "Task fee payment failed"
+        );
+
+        bytes32 seed = keccak256(
+            abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
+        );
+        address[] memory nodeAddresses = getSelectedNodes(
+            3,
+            vramLimit,
+            taskType == TASK_TYPE_LLM,
+            seed
+        );
         for (uint i = 0; i < 3; i++) {
-            address nodeAddress = getSelectedNode(taskHash, dataHash, i);
+            address nodeAddress = nodeAddresses[i];
             tasks[taskInfo.id].selectedNodes.push(nodeAddress);
-            node.startTask(nodeAddress);
             nodeTasks[nodeAddress] = taskInfo.id;
             emit TaskCreated(
                 taskInfo.id,
@@ -110,17 +139,43 @@ contract Task is Ownable {
         }
     }
 
-    function getSelectedNode(
-        bytes32 taskHash,
-        bytes32 dataHash,
-        uint round
-    ) public view returns (address) {
-        bytes32 blockRand = keccak256(
-            abi.encodePacked(blockhash(block.number - 1), round)
-        );
-        uint256 randNum = uint256(blockRand ^ taskHash ^ dataHash) %
-            node.totalNodes();
-        return node.getAvailableNodeStartsFrom(randNum);
+    function getSelectedNodes(
+        uint k,
+        uint vramLimit,
+        bool useSameGPU,
+        bytes32 seed
+    ) private returns (address[] memory) {
+        generator.manualSeed(seed);
+        address nodeAddress;
+        address[] memory res = new address[](k);
+
+        if (useSameGPU) {
+            (bytes32[] memory gpuIDs, uint[] memory counts) = node.filterGPUID(vramLimit, k);
+            uint index = generator.multinomial(counts, 0, counts.length);
+            bytes32 gpuID = gpuIDs[index];
+            for (uint i = 0; i < k; i++) {
+                nodeAddress = node.selectNodeByGPUID(gpuID, generator.randint());
+                node.startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        } else if (vramLimit > 0) {
+            for (uint i = 0; i < k; i++) {
+                (uint[] memory vrams, uint[] memory counts) = node.filterGPUVram(vramLimit, 1);
+                uint index = generator.multinomial(counts, 0, counts.length);
+                uint vram = vrams[index];
+                nodeAddress = node.selectNodeByGPUVram(vram, generator.randint());
+                node.startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        } else {
+            for (uint i = 0; i < k; i++) {
+                nodeAddress = node.selectNode(generator.randint());
+                node.startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        }
+
+        return res;
     }
 
     function submitTaskResultCommitment(
@@ -294,7 +349,7 @@ contract Task is Ownable {
         if (tasks[taskId].resultDisclosedRounds.length == 2) {
             // If no node is cheating, we can already give the result back to the user.
             // And free the two honest nodes.
-            tasks[taskId].isSuccess = compareRound(taskId, 0, 1);
+            tasks[taskId].isSuccess = compareRoundResult(taskId, 0, 1);
             if (tasks[taskId].isSuccess) {
                 settleNodeByDiscloseIndex(taskId, 1);
                 emitTaskFinishedEvent(taskId, 0);
@@ -302,7 +357,7 @@ contract Task is Ownable {
         } else if (tasks[taskId].resultDisclosedRounds.length == 3) {
             if (tasks[taskId].isSuccess) {
                 // Task already succeeded. Check the result and finish the task
-                if (compareRound(taskId, 0, 2)) {
+                if (compareRoundResult(taskId, 0, 2)) {
                     // no one is cheating
                     settleNodeByDiscloseIndex(taskId, 2);
                 } else {
@@ -310,12 +365,12 @@ contract Task is Ownable {
                     punishNodeByDiscloseIndex(taskId, 2);
                 }
             } else {
-                if (compareRound(taskId, 0, 2)) {
+                if (compareRoundResult(taskId, 0, 2)) {
                     // 1 is cheating
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 1);
                     emitTaskFinishedEvent(taskId, 0);
-                } else if (compareRound(taskId, 1, 2)) {
+                } else if (compareRoundResult(taskId, 1, 2)) {
                     // 0 is cheating
                     settleNodeByDiscloseIndex(taskId, 2);
                     punishNodeByDiscloseIndex(taskId, 0);
@@ -387,18 +442,25 @@ contract Task is Ownable {
         tasks[taskId].aborted = true;
     }
 
-    function compareRound(
+    function compareRoundResult(
         uint256 taskId,
         uint roundIndexA,
         uint roundIndexB
     ) internal view returns (bool) {
+        uint taskType = tasks[taskId].taskType;
         uint roundA = tasks[taskId].resultDisclosedRounds[roundIndexA];
         uint roundB = tasks[taskId].resultDisclosedRounds[roundIndexB];
 
         bytes memory resultA = tasks[taskId].results[roundA];
         bytes memory resultB = tasks[taskId].results[roundB];
 
-        return compareResult(resultA, resultB, distanceThreshold);
+        if (taskType == TASK_TYPE_SD) {
+            return compareHamming(resultA, resultB, distanceThreshold);
+        } else if (taskType == TASK_TYPE_LLM) {
+            return keccak256(resultA) == keccak256(resultB);
+        } else {
+            revert("Invalid task type");
+        }
     }
 
     function settleNodeByRound(uint256 taskId, uint round) internal {
@@ -449,27 +511,14 @@ contract Task is Ownable {
         );
     }
 
-    function hamming(bytes8 a, bytes8 b) internal pure returns (uint) {
-        uint64 c = uint64(a ^ b);
-        uint64 res = 0;
-        while (c > 0) {
-            res += c & 1;
-            c = c >> 1;
-        }
-        return uint(res);
-    }
-
-    function compareResult(
+    function compareHamming(
         bytes memory a,
         bytes memory b,
         uint threshold
     ) internal pure returns (bool) {
         if (a.length == b.length && a.length % 8 == 0) {
             for (uint start = 0; start < a.length; start += 8) {
-                uint distance = hamming(
-                    bytes8(slice(a, start, 8)),
-                    bytes8(slice(b, start, 8))
-                );
+                uint distance = Hamming.hamming(a, b, start, start + 8);
                 if (distance >= threshold) {
                     return false;
                 }
@@ -477,82 +526,6 @@ contract Task is Ownable {
             return true;
         }
         return false;
-    }
-
-    function slice(
-        bytes memory _bytes,
-        uint256 _start,
-        uint256 _length
-    ) internal pure returns (bytes memory) {
-        require(_length + 31 >= _length, "slice_overflow");
-        require(_bytes.length >= _start + _length, "slice_outOfBounds");
-
-        bytes memory tempBytes;
-
-        // Check length is 0. `iszero` return 1 for `true` and 0 for `false`.
-        assembly {
-            switch iszero(_length)
-            case 0 {
-                // Get a location of some free memory and store it in tempBytes as
-                // Solidity does for memory variables.
-                tempBytes := mload(0x40)
-
-                // Calculate length mod 32 to handle slices that are not a multiple of 32 in size.
-                let lengthmod := and(_length, 31)
-
-                // tempBytes will have the following format in memory: <length><data>
-                // When copying data we will offset the start forward to avoid allocating additional memory
-                // Therefore part of the length area will be written, but this will be overwritten later anyways.
-                // In case no offset is require, the start is set to the data region (0x20 from the tempBytes)
-                // mc will be used to keep track where to copy the data to.
-                let mc := add(
-                    add(tempBytes, lengthmod),
-                    mul(0x20, iszero(lengthmod))
-                )
-                let end := add(mc, _length)
-
-                for {
-                    // Same logic as for mc is applied and additionally the start offset specified for the method is added
-                    let cc := add(
-                        add(
-                            add(_bytes, lengthmod),
-                            mul(0x20, iszero(lengthmod))
-                        ),
-                        _start
-                    )
-                } lt(mc, end) {
-                    // increase `mc` and `cc` to read the next word from memory
-                    mc := add(mc, 0x20)
-                    cc := add(cc, 0x20)
-                } {
-                    // Copy the data from source (cc location) to the slice data (mc location)
-                    mstore(mc, mload(cc))
-                }
-
-                // Store the length of the slice. This will overwrite any partial data that
-                // was copied when having slices that are not a multiple of 32.
-                mstore(tempBytes, _length)
-
-                // update free-memory pointer
-                // allocating the array padded to 32 bytes like the compiler does now
-                // To set the used memory as a multiple of 32, add 31 to the actual memory usage (mc)
-                // and remove the modulo 32 (the `and` with `not(31)`)
-                mstore(0x40, and(add(mc, 31), not(31)))
-            }
-            // if we want a zero-length slice let's just return a zero-length array
-            default {
-                tempBytes := mload(0x40)
-                // zero out the 32 bytes slice we are about to return
-                // we need to do it because Solidity does not garbage collect
-                mstore(tempBytes, 0)
-
-                // update free-memory pointer
-                // tempBytes uses 32 bytes in memory (even when empty) for the length.
-                mstore(0x40, add(tempBytes, 0x20))
-            }
-        }
-
-        return tempBytes;
     }
 
     function updateTaskFeePerNode(uint256 fee) public onlyOwner {
@@ -563,7 +536,7 @@ contract Task is Ownable {
         distanceThreshold = threshold;
     }
 
-    function updateTimeout(uint t) public onlyOwner() {
+    function updateTimeout(uint t) public onlyOwner {
         timeout = t;
     }
 

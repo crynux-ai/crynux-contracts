@@ -1,19 +1,27 @@
 const { toWei, BN } = web3.utils;
 
-const prepareNetwork = async (accounts, cnxTokenInstance, nodeInstance) => {
+const prepareNetwork = async (accounts, cnxTokenInstance, nodeInstance, gpuNames = null, gpuVrams = null) => {
+    if (!gpuNames) {
+        gpuNames = ["NVIDIA GeForce GTX 1070 Ti", "NVIDIA GeForce GTX 1070 Ti", "NVIDIA GeForce GTX 1070 Ti"]
+    }
+    if (!gpuVrams) {
+        gpuVrams = [8, 8, 8]
+    }
+    assert.equal(gpuNames.length, 3, "gpuNames should have 3 elements")
+    assert.equal(gpuNames.length, gpuVrams.length, "gpuNames length should equal to gpuVrams")
 
-    for(let i = 2; i < 5; i++) {
-        await prepareNode(accounts[i], cnxTokenInstance, nodeInstance);
+    for(let i = 0; i < 3; i++) {
+        await prepareNode(accounts[i + 2], cnxTokenInstance, nodeInstance, gpuNames[i], gpuVrams[i]);
     }
 
     const availableNodes = await nodeInstance.availableNodes();
     assert.equal(availableNodes.toNumber(), 3, "Wrong number of available nodes");
 };
 
-const prepareNode = async (nodeAccount, cnxTokenInstance, nodeInstance) => {
+const prepareNode = async (nodeAccount, cnxTokenInstance, nodeInstance, gpuName = "NVIDIA GeForce GTX 1070 Ti", gpuVram = 8) => {
     await cnxTokenInstance.transfer(nodeAccount, new BN(toWei("400", "ether")));
     await cnxTokenInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: nodeAccount});
-    await nodeInstance.join({from: nodeAccount});
+    await nodeInstance.join(gpuName, gpuVram, {from: nodeAccount});
 };
 
 const prepareUser = async(userAccount, cnxTokenInstance, taskInstance) => {
@@ -21,15 +29,17 @@ const prepareUser = async(userAccount, cnxTokenInstance, taskInstance) => {
     await cnxTokenInstance.approve(taskInstance.address, new BN(toWei("500", "ether")), {from: userAccount});
 };
 
-const prepareTask = async (accounts, cnxTokenInstance, nodeInstance, taskInstance) => {
+const prepareTask = async (accounts, cnxTokenInstance, nodeInstance, taskInstance, taskType = 0, vramLimit = 0) => {
 
     // Create the task.
 
     const balBefore = await cnxTokenInstance.balanceOf(accounts[1]);
 
     const tx = await taskInstance.createTask(
+        taskType,
         web3.utils.soliditySha3("task hash"),
         web3.utils.soliditySha3("data hash"),
+        vramLimit,
         {from: accounts[1]}
     );
 

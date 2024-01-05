@@ -7,6 +7,9 @@ const { BN, toWei } = web3.utils;
 const { prepareTask, prepareNetwork, prepareUser, getCommitment} = require("./utils");
 
 contract("Task", (accounts) => {
+    const gpuName = "NVIDIA GeForce GTX 1070 Ti"
+    const gpuVram = 8
+
     it("should disclose the task result correctly", async () => {
 
         const taskInstance = await Task.deployed();
@@ -179,7 +182,7 @@ contract("Task", (accounts) => {
         await nodeInstance.resume({from: accounts[2]});
 
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[3]});
-        await nodeInstance.join({from: accounts[3]});
+        await nodeInstance.join(gpuName, gpuVram, {from: accounts[3]});
 
         const availableNodesStart = await nodeInstance.availableNodes();
         assert.equal(availableNodesStart, 3, "Wrong number of available nodes");
@@ -298,7 +301,7 @@ contract("Task", (accounts) => {
 
         await cnxInstance.transfer(accounts[4], new BN(toWei("400", "ether")));
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[4]})
-        await nodeInstance.join({from: accounts[4]})
+        await nodeInstance.join(gpuName, gpuVram, {from: accounts[4]})
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
@@ -404,7 +407,7 @@ contract("Task", (accounts) => {
 
         await cnxInstance.transfer(accounts[2], new BN(toWei("400", "ether")));
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[2]})
-        await nodeInstance.join({from: accounts[2]})
+        await nodeInstance.join(gpuName, gpuVram, {from: accounts[2]})
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
