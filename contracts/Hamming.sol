@@ -12,7 +12,7 @@ library Hamming {
         return uint(res);
     }
 
-    function hamming(bytes memory a, bytes memory b, uint start, uint end) public pure returns (uint) {
+    function hamming(bytes memory a, bytes memory b, uint start, uint end) internal pure returns (uint) {
         require(a.length == b.length, "length is not same");
         uint distance = 0;
         for (uint i = start; i < end; i += 32) {
