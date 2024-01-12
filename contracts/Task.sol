@@ -50,6 +50,7 @@ contract Task is Ownable {
 
     event TaskCreated(
         uint256 taskId,
+        uint256 taskType,
         address indexed creator,
         address indexed selectedNode,
         bytes32 taskHash,
@@ -130,6 +131,7 @@ contract Task is Ownable {
             nodeTasks[nodeAddress] = taskInfo.id;
             emit TaskCreated(
                 taskInfo.id,
+                taskType,
                 msg.sender,
                 nodeAddress,
                 taskHash,
