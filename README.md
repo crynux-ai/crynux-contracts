@@ -1,4 +1,4 @@
-## The Smart Contracts for the H Network
+## The Smart Contracts for the Crynux Network
 
 The solidity contracts to coordinate the nodes and tasks.
 
