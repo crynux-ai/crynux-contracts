@@ -5,6 +5,8 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+import "./QOS.sol";
+
 contract Node is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -23,6 +25,7 @@ contract Node is Ownable {
     uint private NODE_STATUS_PAUSED = 5;
 
     IERC20 private cnxToken;
+    QOS private qos;
 
     struct GPUInfo {
         string name;
@@ -50,8 +53,9 @@ contract Node is Ownable {
 
     address private taskContractAddress;
 
-    constructor(IERC20 tokenInstance) {
+    constructor(IERC20 tokenInstance, QOS qosInstance) {
         cnxToken = tokenInstance;
+        qos = qosInstance;
     }
 
     function getNodeInfo(
@@ -261,6 +265,7 @@ contract Node is Ownable {
         );
         markNodeUnavailable(nodeAddress);
         setNodeStatus(nodeAddress, NODE_STATUS_BUSY);
+        qos.startTask(nodeAddress);
     }
 
     function finishTask(address nodeAddress) public {
@@ -276,6 +281,16 @@ contract Node is Ownable {
                 nodeStatus == NODE_STATUS_PENDING_QUIT,
             "Illegal node status"
         );
+
+        qos.finishTask(nodeAddress);
+        if (qos.shouldKickOut(nodeAddress)) {
+            removeNode(nodeAddress);
+            require(
+                cnxToken.transfer(nodeAddress, requiredStakeAmount),
+                "Token transfer failed"
+            );
+            return;
+        }
 
         if (nodeStatus == NODE_STATUS_BUSY) {
             markNodeAvailable(nodeAddress);
