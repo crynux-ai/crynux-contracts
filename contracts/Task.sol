@@ -205,9 +205,6 @@ contract Task is Ownable {
             "Nonce already used"
         );
 
-        tasks[taskId].commitments[round] = commitment;
-        tasks[taskId].nonces[round] = nonce;
-
         uint index = 0;
         for (uint i = 0; i < 3; i++) {
             if (tasks[taskId].commitments[i] != 0) {
@@ -215,6 +212,8 @@ contract Task is Ownable {
             }
         }
         qos.addTaskScore(msg.sender, index);
+        tasks[taskId].commitments[round] = commitment;
+        tasks[taskId].nonces[round] = nonce;
 
         if (isCommitmentReady(taskId)) {
             emit TaskResultCommitmentsReady(taskId);
@@ -307,9 +306,6 @@ contract Task is Ownable {
         );
         require(tasks[taskId].commitments[round] == 0, "Already submitted");
 
-        uint256 errCommitment = 1;
-        tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
-
         uint index = 0;
         for (uint i = 0; i < 3; i++) {
             if (tasks[taskId].commitments[i] != 0) {
@@ -317,6 +313,8 @@ contract Task is Ownable {
             }
         }
         qos.addTaskScore(msg.sender, index);
+        uint256 errCommitment = 1;
+        tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
 
         qos.addTaskScore(msg.sender, tasks[taskId].resultDisclosedRounds.length);
         tasks[taskId].resultDisclosedRounds.push(round); // Set to result disclosed state, the result is a special zero value
