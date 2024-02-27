@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Node.sol";
 import "./Random.sol";
 import "./Hamming.sol";
+import "./QOS.sol";
 
 contract Task is Ownable {
     using Random for Random.Generator;
@@ -34,6 +35,7 @@ contract Task is Ownable {
     }
 
     Node private node;
+    QOS private qos;
     IERC20 private cnxToken;
     mapping(uint => TaskInfo) private tasks;
     mapping(address => uint256) private nodeTasks;
@@ -61,9 +63,10 @@ contract Task is Ownable {
     event TaskSuccess(uint256 taskId, bytes result, address indexed resultNode);
     event TaskAborted(uint256 taskId, string reason);
 
-    constructor(Node nodeInstance, IERC20 tokenInstance) {
+    constructor(Node nodeInstance, IERC20 tokenInstance, QOS qosInstance) {
         node = nodeInstance;
         cnxToken = tokenInstance;
+        qos = qosInstance;
         taskFeePerNode = 10 * 10 ** 18;
         nextTaskId = 1;
         distanceThreshold = 5;
@@ -202,6 +205,13 @@ contract Task is Ownable {
             "Nonce already used"
         );
 
+        uint index = 0;
+        for (uint i = 0; i < 3; i++) {
+            if (tasks[taskId].commitments[i] != 0) {
+                index++;
+            }
+        }
+        qos.addTaskScore(msg.sender, index);
         tasks[taskId].commitments[round] = commitment;
         tasks[taskId].nonces[round] = nonce;
 
@@ -255,6 +265,7 @@ contract Task is Ownable {
         );
 
         tasks[taskId].results[round] = result;
+        qos.addTaskScore(msg.sender, tasks[taskId].resultDisclosedRounds.length);
         tasks[taskId].resultDisclosedRounds.push(round);
 
         checkTaskResult(taskId);
@@ -295,8 +306,17 @@ contract Task is Ownable {
         );
         require(tasks[taskId].commitments[round] == 0, "Already submitted");
 
+        uint index = 0;
+        for (uint i = 0; i < 3; i++) {
+            if (tasks[taskId].commitments[i] != 0) {
+                index++;
+            }
+        }
+        qos.addTaskScore(msg.sender, index);
         uint256 errCommitment = 1;
         tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
+
+        qos.addTaskScore(msg.sender, tasks[taskId].resultDisclosedRounds.length);
         tasks[taskId].resultDisclosedRounds.push(round); // Set to result disclosed state, the result is a special zero value
 
         if (isCommitmentReady(taskId)) {
@@ -497,6 +517,9 @@ contract Task is Ownable {
             "Token transfer failed"
         );
         tasks[taskId].balance -= taskFeePerNode;
+
+        // remove node's qos task score
+        qos.punish(nodeAddress);
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
