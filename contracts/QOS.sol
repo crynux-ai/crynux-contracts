@@ -88,7 +88,7 @@ contract QOS is Ownable {
 
     function getTaskScore(address nodeAddress) public view returns (uint) {
         if (nodeTaskCount[nodeAddress] == 0) {
-            return 0;
+            return 20;
         } else {
             return nodeTaskScore[nodeAddress] / nodeTaskCount[nodeAddress];
         }

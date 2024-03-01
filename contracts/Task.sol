@@ -159,7 +159,9 @@ contract Task is Ownable {
             uint index = generator.multinomial(counts, 0, counts.length);
             bytes32 gpuID = gpuIDs[index];
             for (uint i = 0; i < k; i++) {
-                nodeAddress = node.selectNodeByGPUID(gpuID, generator.randint());
+                (address[] memory nodes, uint[] memory scores) = node.filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
                 node.startTask(nodeAddress);
                 res[i] = nodeAddress;
             }
@@ -168,7 +170,9 @@ contract Task is Ownable {
                 (uint[] memory vrams, uint[] memory counts) = node.filterGPUVram(vramLimit, 1);
                 uint index = generator.multinomial(counts, 0, counts.length);
                 uint vram = vrams[index];
-                nodeAddress = node.selectNodeByGPUVram(vram, generator.randint());
+                (address[] memory nodes, uint[] memory scores) = node.filterNodesByGPUVram(vram);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
                 node.startTask(nodeAddress);
                 res[i] = nodeAddress;
             }

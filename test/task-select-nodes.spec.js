@@ -27,7 +27,7 @@ contract("Task", async (accounts) => {
             await taskInstance.createTask(taskType, taskHash, dataHash, 0, { from: userAccount });
             assert.fail("should not pass")
         } catch (e) {
-            assert.match(e.toString(), /No available nodes/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         await prepareNetwork(
@@ -42,7 +42,7 @@ contract("Task", async (accounts) => {
             await taskInstance.createTask(taskType, taskHash, dataHash, 16, { from: userAccount });
             assert.fail("should not pass")
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu vram meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, { from: userAccount });
@@ -105,7 +105,7 @@ contract("Task", async (accounts) => {
             await taskInstance.createTask(taskType, taskHash, dataHash, 0, { from: userAccount });
             assert.fail("should not pass")
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         await prepareNetwork(
@@ -120,14 +120,14 @@ contract("Task", async (accounts) => {
             await taskInstance.createTask(taskType, taskHash, dataHash, 8, { from: userAccount });
             assert.fail("should not pass")
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         try {
             await taskInstance.createTask(taskType, taskHash, dataHash, 16, { from: userAccount });
             assert.fail("should not pass")
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         await prepareNode(accounts[5], cnxInstance, nodeInstance, "NVIDIA GeForce RTX 4060 Ti", 16);
@@ -210,14 +210,14 @@ contract("Task", async (accounts) => {
             await taskInstance.createTask(0, taskHash, dataHash, 8, {from: userAccount});
             assert.fail("should not pass");
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu vram meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         try {
             await taskInstance.createTask(1, taskHash, dataHash, 8, { from: userAccount });
             assert.fail("should not pass");
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         const result = "0x0102030405060708"
 
@@ -238,14 +238,14 @@ contract("Task", async (accounts) => {
                 await taskInstance.createTask(0, taskHash, dataHash, 8, {from: userAccount});
                 assert.fail("should not pass");
             } catch (e) {
-                assert.match(e.toString(), /No kind of gpu vram meets condition/, "Wrong reason: " + e.toString());
+                assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
             }
     
             try {
                 await taskInstance.createTask(1, taskHash, dataHash, 8, { from: userAccount });
                 assert.fail("should not pass");
             } catch (e) {
-                assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+                assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
             }    
         }
 

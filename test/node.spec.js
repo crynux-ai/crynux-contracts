@@ -181,14 +181,14 @@ contract("Node", (accounts) => {
             await nodeInstance.filterGPUVram(24, 2);
             assert.fail("filterGPUVram not reverted")
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu vram meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         try {
             await nodeInstance.filterGPUVram(48, 1);
             assert.fail("filterGPUVram not reverted")
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu vram meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         res = await nodeInstance.filterGPUVram(8, 1);
@@ -211,7 +211,7 @@ contract("Node", (accounts) => {
             await nodeInstance.selectNodeByGPUVram(48, crypto.randomInt(2 ** 31 - 1));
             assert.fail("selectNodeByGPUVram not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No available nodes of such vram/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         // filter gpu id
@@ -219,14 +219,14 @@ contract("Node", (accounts) => {
             await nodeInstance.filterGPUID(16, 2);
             assert.fail("filterGPUID not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         try {
             await nodeInstance.filterGPUID(48, 1);
             assert.fail("filterGPUID not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         // sample node by gpu id
         res = await nodeInstance.filterGPUID(24, 1);
@@ -246,25 +246,25 @@ contract("Node", (accounts) => {
             await nodeInstance.filterGPUID(24, 1);
             assert.fail("filterGPUID not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu id meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         try {
             await nodeInstance.filterGPUVram(24, 1);
             assert.fail("filterGPUVram not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No kind of gpu vram meets condition/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         try {
             await nodeInstance.selectNodeByGPUID(gpuID, crypto.randomInt(2 ** 31 - 1));
             assert.fail("selectNodeByGPUID not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No available nodes of such gpu id/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         try {
             await nodeInstance.selectNodeByGPUVram(24, crypto.randomInt(2 ** 31 - 1));
             assert.fail("selectNodeByGPUVram not reverted");
         } catch (e) {
-            assert.match(e.toString(), /No available nodes of such vram/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
         // sample nodes
