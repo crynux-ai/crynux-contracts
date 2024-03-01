@@ -32,6 +32,7 @@ contract Task is Ownable {
         bool aborted;
         uint256 timeout;
         uint256 balance;
+        uint256 totalBalance;
     }
 
     Node private node;
@@ -41,7 +42,6 @@ contract Task is Ownable {
     mapping(address => uint256) private nodeTasks;
     uint256 private nextTaskId;
 
-    uint256 private taskFeePerNode;
     uint private distanceThreshold;
     uint256 private timeout;
 
@@ -67,7 +67,6 @@ contract Task is Ownable {
         node = nodeInstance;
         cnxToken = tokenInstance;
         qos = qosInstance;
-        taskFeePerNode = 10 * 10 ** 18;
         nextTaskId = 1;
         distanceThreshold = 5;
         timeout = 15 minutes;
@@ -79,9 +78,10 @@ contract Task is Ownable {
         uint taskType,
         bytes32 taskHash,
         bytes32 dataHash,
-        uint vramLimit
+        uint vramLimit,
+        uint taskFee,
+        uint cap
     ) public {
-        uint256 taskFee = taskFeePerNode * 3;
 
         require(
             taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM,
@@ -102,6 +102,7 @@ contract Task is Ownable {
         taskInfo.creator = msg.sender;
         taskInfo.timeout = block.timestamp + timeout;
         taskInfo.balance = taskFee;
+        taskInfo.totalBalance = taskFee;
         taskInfo.taskType = taskType;
         taskInfo.taskHash = taskHash;
         taskInfo.dataHash = dataHash;
@@ -446,10 +447,10 @@ contract Task is Ownable {
     function abortTask(uint256 taskId) internal {
         // Return the task fee to the user
         require(
-            cnxToken.transfer(tasks[taskId].creator, taskFeePerNode * 3),
+            cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
             "Token transfer failed"
         );
-        tasks[taskId].balance -= taskFeePerNode * 3;
+        tasks[taskId].balance = 0;
 
         // Free the nodes
         for (uint i = 0; i < 3; i++) {
@@ -488,11 +489,15 @@ contract Task is Ownable {
     function settleNodeByRound(uint256 taskId, uint round) internal {
         address nodeAddress = tasks[taskId].selectedNodes[round];
         // Transfer task fee to the node
+        uint fee = tasks[taskId].totalBalance * qos.getCurrentTaskScore(nodeAddress) / qos.getTaskScoreLimit();
+        if (tasks[taskId].balance - fee < 3) {
+            fee = tasks[taskId].balance;
+        }
         require(
-            cnxToken.transfer(nodeAddress, taskFeePerNode),
+            cnxToken.transfer(nodeAddress, fee),
             "Token transfer failed"
         );
-        tasks[taskId].balance -= taskFeePerNode;
+        tasks[taskId].balance -= fee;
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
@@ -512,11 +517,15 @@ contract Task is Ownable {
     function punishNodeByRound(uint256 taskId, uint round) internal {
         address nodeAddress = tasks[taskId].selectedNodes[round];
         // Transfer task fee to the node
+        uint fee = tasks[taskId].totalBalance * qos.getCurrentTaskScore(nodeAddress) / qos.getTaskScoreLimit();
+        if (tasks[taskId].balance - fee < 3) {
+            fee = tasks[taskId].balance;
+        }
         require(
-            cnxToken.transfer(tasks[taskId].creator, taskFeePerNode),
+            cnxToken.transfer(tasks[taskId].creator, fee),
             "Token transfer failed"
         );
-        tasks[taskId].balance -= taskFeePerNode;
+        tasks[taskId].balance -= fee;
 
         // remove node's qos task score
         qos.punish(nodeAddress);
@@ -551,10 +560,6 @@ contract Task is Ownable {
             return true;
         }
         return false;
-    }
-
-    function updateTaskFeePerNode(uint256 fee) public onlyOwner {
-        taskFeePerNode = fee;
     }
 
     function updateDistanceThreshold(uint threshold) public onlyOwner {
