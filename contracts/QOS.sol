@@ -103,6 +103,10 @@ contract QOS is Ownable {
         return totalScore;
     }
 
+    function getCurrentTaskScore(address nodeAddress) public view returns (uint) {
+        return nodeTaskScorePool[nodeAddress][0];
+    }
+
     function shouldKickOut(address nodeAddress) public view returns (bool) {
         uint totalScore = 0;
         uint taskCount = nodeTaskCount[nodeAddress];
@@ -115,5 +119,9 @@ contract QOS is Ownable {
         }
 
         return totalScore <= kickoutThreshold;
+    }
+
+    function getTaskScoreLimit() public view returns (uint) {
+        return (TASK_SCORE_REWARDS[0] + TASK_SCORE_REWARDS[1] + TASK_SCORE_REWARDS[2]) * 2;
     }
 }
