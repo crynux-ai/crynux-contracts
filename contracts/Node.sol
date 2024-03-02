@@ -420,10 +420,4 @@ contract Node is Ownable {
         }
         return (nodes, scores);
     }
-
-    function selectNode(uint index) public view returns (address) {
-        uint length = _availableNodes.length();
-        require(length > 0, "No available node");
-        return _availableNodes.at(index % length);
-    }
 }

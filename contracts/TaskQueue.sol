@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./Node.sol";
 
-struct Task {
+struct TaskInQueue {
     uint256 id;
     uint taskType;
     address creator;
@@ -17,11 +17,11 @@ struct Task {
 }
 
 struct TaskHeap {
-    Task[] tasks;
+    TaskInQueue[] tasks;
 }
 
 library TaskHeap_impl {
-    function insert(TaskHeap storage heap, Task memory task) internal {
+    function insert(TaskHeap storage heap, TaskInQueue memory task) internal {
         heap.tasks.push(task);
         uint index = heap.tasks.length - 1;
         for (; index > 0 && task.price > heap.tasks[(index - 1) / 2].price; index = (index - 1) / 2) {
@@ -34,12 +34,12 @@ library TaskHeap_impl {
         return heap.tasks.length;
     }
 
-    function top(TaskHeap storage heap) internal view returns (Task memory) {
+    function top(TaskHeap storage heap) internal view returns (TaskInQueue memory) {
         return heap.tasks[0];
     }
 
     function pop(TaskHeap storage heap) internal {
-        Task memory last = heap.tasks[heap.tasks.length - 1];
+        TaskInQueue memory last = heap.tasks[heap.tasks.length - 1];
 
         heap.tasks.pop();
 
@@ -95,7 +95,7 @@ contract TaskQueue is Ownable {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskType == 0 || taskType == 1, "Invalid task type");
 
-        Task memory task = Task({
+        TaskInQueue memory task = TaskInQueue({
             id: taskId,
             taskType: taskType,
             creator: creator,
@@ -114,7 +114,7 @@ contract TaskQueue is Ownable {
         }
     }
 
-    function popTask(address node1, address node2, address node3) public returns (Task memory) {
+    function popTask(address node1, address node2, address node3) public returns (TaskInQueue memory) {
         Node.NodeInfo memory nodeInfo1 = node.getNodeInfo(node1);
         Node.NodeInfo memory nodeInfo2 = node.getNodeInfo(node2);
         Node.NodeInfo memory nodeInfo3 = node.getNodeInfo(node3);
@@ -129,7 +129,7 @@ contract TaskQueue is Ownable {
             for (uint i = 0; i < gptTaskVrams.length(); i++) {
                 uint vram = gptTaskVrams.at(i);
                 if (vram <= vramLimit) {
-                    Task memory task = gptTaskHeaps[vram].top();
+                    TaskInQueue memory task = gptTaskHeaps[vram].top();
                     if (task.price > maxPrice) {
                         maxPrice = task.price;
                         resultVram = vram;
@@ -148,7 +148,7 @@ contract TaskQueue is Ownable {
         for (uint i = 0; i < sdTaskVrams.length(); i++) {
             uint vram = sdTaskVrams.at(i);
             if (vram <= vramLimit) {
-                Task memory task = sdTaskHeaps[vram].top();
+                TaskInQueue memory task = sdTaskHeaps[vram].top();
                 if (task.price > maxPrice) {
                     maxPrice = task.price;
                     resultVram = vram;
@@ -159,7 +159,7 @@ contract TaskQueue is Ownable {
 
         require(maxPrice > 0, "No available task");
 
-        Task memory result;
+        TaskInQueue memory result;
         if (isGPT) {
             result = gptTaskHeaps[resultVram].top();
             gptTaskHeaps[resultVram].pop();

@@ -8,6 +8,8 @@ import "./Node.sol";
 import "./Random.sol";
 import "./Hamming.sol";
 import "./QOS.sol";
+import "./TaskQueue.sol";
+
 
 contract Task is Ownable {
     using Random for Random.Generator;
@@ -38,6 +40,8 @@ contract Task is Ownable {
     Node private node;
     QOS private qos;
     IERC20 private cnxToken;
+    TaskQueue private taskQueue;
+
     mapping(uint => TaskInfo) private tasks;
     mapping(address => uint256) private nodeTasks;
     uint256 private nextTaskId;
@@ -50,6 +54,13 @@ contract Task is Ownable {
 
     Random.Generator private generator;
 
+    event TaskPending(
+        uint256 taskId,
+        uint256 taskType,
+        address indexed creator,
+        bytes32 taskHash,
+        bytes32 dataHash
+    );
     event TaskCreated(
         uint256 taskId,
         uint256 taskType,
@@ -63,10 +74,11 @@ contract Task is Ownable {
     event TaskSuccess(uint256 taskId, bytes result, address indexed resultNode);
     event TaskAborted(uint256 taskId, string reason);
 
-    constructor(Node nodeInstance, IERC20 tokenInstance, QOS qosInstance) {
+    constructor(Node nodeInstance, IERC20 tokenInstance, QOS qosInstance, TaskQueue taskQueueInstance) {
         node = nodeInstance;
         cnxToken = tokenInstance;
         qos = qosInstance;
+        taskQueue = taskQueueInstance;
         nextTaskId = 1;
         distanceThreshold = 5;
         timeout = 15 minutes;
@@ -113,7 +125,6 @@ contract Task is Ownable {
         taskInfo.results = new bytes[](3);
         taskInfo.aborted = false;
 
-        tasks[taskInfo.id] = taskInfo;
 
         require(
             cnxToken.transferFrom(msg.sender, address(this), taskFee),
@@ -123,25 +134,43 @@ contract Task is Ownable {
         bytes32 seed = keccak256(
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
         );
-        address[] memory nodeAddresses = getSelectedNodes(
-            3,
-            vramLimit,
-            taskType == TASK_TYPE_LLM,
-            seed
-        );
-        for (uint i = 0; i < 3; i++) {
-            address nodeAddress = nodeAddresses[i];
-            tasks[taskInfo.id].selectedNodes.push(nodeAddress);
-            nodeTasks[nodeAddress] = taskInfo.id;
-            emit TaskCreated(
+        try this.getSelectedNodes(3, vramLimit, taskType == TASK_TYPE_LLM, seed) returns (address[] memory nodeAddresses) {
+            emit TaskPending(
                 taskInfo.id,
                 taskType,
-                msg.sender,
-                nodeAddress,
+                taskInfo.creator,
                 taskHash,
-                dataHash,
-                i
+                dataHash
             );
+            tasks[taskInfo.id] = taskInfo;
+            for (uint i = 0; i < 3; i++) {
+                address nodeAddress = nodeAddresses[i];
+                tasks[taskInfo.id].selectedNodes.push(nodeAddress);
+                nodeTasks[nodeAddress] = taskInfo.id;
+                emit TaskCreated(
+                    taskInfo.id,
+                    taskType,
+                    taskInfo.creator,
+                    nodeAddress,
+                    taskHash,
+                    dataHash,
+                    i
+                );
+            }
+        } catch Error(string memory reason) {
+            string memory target = "No available node";
+            if (keccak256(bytes(reason)) == keccak256(bytes(target))) {
+                emit TaskPending(
+                    taskInfo.id,
+                    taskType,
+                    taskInfo.creator,
+                    taskHash,
+                    dataHash
+                );
+                taskQueue.pushTask(taskInfo.id, taskType, taskInfo.creator, taskHash, dataHash, vramLimit, taskFee / cap);
+            } else {
+                revert(reason);
+            }
         }
     }
 
@@ -150,7 +179,7 @@ contract Task is Ownable {
         uint vramLimit,
         bool useSameGPU,
         bytes32 seed
-    ) private returns (address[] memory) {
+    ) public returns (address[] memory) {
         generator.manualSeed(seed);
         address nodeAddress;
         address[] memory res = new address[](k);
@@ -166,7 +195,7 @@ contract Task is Ownable {
                 node.startTask(nodeAddress);
                 res[i] = nodeAddress;
             }
-        } else if (vramLimit > 0) {
+        } else {
             for (uint i = 0; i < k; i++) {
                 (uint[] memory vrams, uint[] memory counts) = node.filterGPUVram(vramLimit, 1);
                 uint index = generator.multinomial(counts, 0, counts.length);
@@ -174,12 +203,6 @@ contract Task is Ownable {
                 (address[] memory nodes, uint[] memory scores) = node.filterNodesByGPUVram(vram);
                 uint j = generator.multinomial(scores, 0, nodes.length);
                 nodeAddress = nodes[j];
-                node.startTask(nodeAddress);
-                res[i] = nodeAddress;
-            }
-        } else {
-            for (uint i = 0; i < k; i++) {
-                nodeAddress = node.selectNode(generator.randint());
                 node.startTask(nodeAddress);
                 res[i] = nodeAddress;
             }
