@@ -13,6 +13,7 @@ struct TaskInQueue {
     bytes32 taskHash;
     bytes32 dataHash;
     uint vramLimit;
+    uint taskFee;
     uint price;
 }
 
@@ -90,6 +91,7 @@ contract TaskQueue is Ownable {
         bytes32 taskHash,
         bytes32 dataHash,
         uint vramLimit,
+        uint taskFee,
         uint price
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
@@ -102,6 +104,7 @@ contract TaskQueue is Ownable {
             taskHash: taskHash,
             dataHash: dataHash,
             vramLimit: vramLimit,
+            taskFee: taskFee,
             price: price
         });
         if (taskType == 0) {

@@ -6,12 +6,17 @@ import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./QOS.sol";
+import "./Random.sol";
+
+abstract contract TaskWithCallback {
+    function nodeAvailableCallback(address root) external virtual;
+}
 
 contract Node is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
-    using EnumerableMap for EnumerableMap.Bytes32ToUintMap;
+    using Random for Random.Generator;
 
     uint256 private maxNodesAllowed = 100000;
     uint256 private requiredStakeAmount = 400 * 10 ** 18;
@@ -47,14 +52,15 @@ contract Node is Ownable {
     EnumerableSet.AddressSet private _availableNodes;
     // store available nodes indexed by gpu vram
     EnumerableSet.UintSet private _availableGPUVramSet;
-    mapping(uint => EnumerableSet.AddressSet) private _gpuVramNodesIndex;
-    mapping(uint => uint) private _gpuVramGroupScores;
+    mapping(uint => EnumerableSet.Bytes32Set) _availableGPUVramIDMap;
     // store available nodes indexed by gpu type (gpuID)
-    EnumerableMap.Bytes32ToUintMap private _availableGPUIDVramMap;
+    EnumerableSet.Bytes32Set private _availableGPUIDSet;
     mapping(bytes32 => EnumerableSet.AddressSet) private _gpuIDNodesIndex;
     mapping(bytes32 => uint) private _gpuIDGroupScores;
 
     address private taskContractAddress;
+
+    Random.Generator private generator;
 
     constructor(IERC20 tokenInstance, QOS qosInstance) {
         cnxToken = tokenInstance;
@@ -80,10 +86,10 @@ contract Node is Ownable {
     }
 
     function getAvailableGPUs() public view returns (GPUInfo[] memory) {
-        uint length = _availableGPUIDVramMap.length();
+        uint length = _availableGPUIDSet.length();
         GPUInfo[] memory res = new GPUInfo[](length);
         for (uint i = 0; i < length; i++) {
-            (bytes32 gpuID, ) = _availableGPUIDVramMap.at(i);
+            bytes32 gpuID = _availableGPUIDSet.at(i);
             address nodeAddress = _gpuIDNodesIndex[gpuID].at(0);
             res[i] = nodesMap[nodeAddress].gpu;
         }
@@ -109,16 +115,17 @@ contract Node is Ownable {
 
         // index node by gpu memory
         _availableGPUVramSet.add(vram);
-        _gpuVramNodesIndex[vram].add(nodeAddress);
-        _gpuVramGroupScores[vram] += score;
+        _availableGPUVramIDMap[vram].add(gpuID);
 
         // index node by gpu ID
-        _availableGPUIDVramMap.set(gpuID, vram);
+        _availableGPUIDSet.add(gpuID);
         _gpuIDNodesIndex[gpuID].add(nodeAddress);
         _gpuIDGroupScores[gpuID] += score;
 
         // add node to available nodes set
         _availableNodes.add(nodeAddress);
+
+        TaskWithCallback(taskContractAddress).nodeAvailableCallback(nodeAddress);
     }
 
     function markNodeUnavailable(address nodeAddress) private {
@@ -126,18 +133,16 @@ contract Node is Ownable {
         bytes32 gpuID = nodesMap[nodeAddress].gpuID;
         uint score = nodesMap[nodeAddress].score;
 
-        // remove node from gpu index
-        _gpuVramNodesIndex[vram].remove(nodeAddress);
-        _gpuVramGroupScores[vram] -= score;
-        if (_gpuVramNodesIndex[vram].length() == 0) {
-            _availableGPUVramSet.remove(vram);
-        }
-
         // remove node from gpu id index
         _gpuIDNodesIndex[gpuID].remove(nodeAddress);
         _gpuIDGroupScores[gpuID] -= score;
         if (_gpuIDNodesIndex[gpuID].length() == 0) {
-            _availableGPUIDVramMap.remove(gpuID);
+            _availableGPUIDSet.remove(gpuID);
+            // remove gpuID when there is no node of this gpuID
+            _availableGPUVramIDMap[vram].remove(gpuID);
+            if (_availableGPUVramIDMap[vram].length() == 0) {
+                _availableGPUVramSet.remove(vram);
+            }
         }
 
         // remove node from available nodes set
@@ -327,54 +332,28 @@ contract Node is Ownable {
         taskContractAddress = taskContract;
     }
 
-    function filterGPUVram(
-        uint vramLimit,
-        uint countLimit
-    ) public view returns (uint[] memory, uint[] memory) {
-        uint[] memory scores = new uint[](_availableGPUVramSet.length());
-        uint[] memory memories = new uint[](_availableGPUVramSet.length());
-        uint validCount = 0;
-
-        // filter all valid gpu memory
-        for (uint i = 0; i < _availableGPUVramSet.length(); i++) {
-            uint gpuMemory = _availableGPUVramSet.at(i);
-            if (gpuMemory >= vramLimit) {
-                uint count = _gpuVramNodesIndex[gpuMemory].length();
-                if (count >= countLimit) {
-                    scores[validCount] = _gpuVramGroupScores[gpuMemory];
-                    memories[validCount] = gpuMemory;
-                    validCount++;
-                }
-            }
-        }
-        require(validCount > 0, "No available node");
-
-        // resize array by assembly
-        uint subSize = scores.length - validCount;
-        assembly {
-            mstore(memories, sub(mload(memories), subSize))
-            mstore(scores, sub(mload(scores), subSize))
-        }
-        return (memories, scores);
-    }
-
     function filterGPUID(
         uint vramLimit,
         uint countLimit
-    ) public view returns (bytes32[] memory, uint[] memory) {
-        uint[] memory scores = new uint[](_availableGPUIDVramMap.length());
-        bytes32[] memory ids = new bytes32[](_availableGPUIDVramMap.length());
+    ) private view returns (bytes32[] memory, uint[] memory) {
+        uint[] memory scores = new uint[](_availableGPUIDSet.length());
+        bytes32[] memory ids = new bytes32[](_availableGPUIDSet.length());
         uint validCount = 0;
 
         // filter all valid gpu ids
-        for (uint i = 0; i < _availableGPUIDVramMap.length(); i++) {
-            (bytes32 gpuID, uint vram) = _availableGPUIDVramMap.at(i);
+        for (uint i = 0; i < _availableGPUVramSet.length(); i++) {
+            uint vram = _availableGPUVramSet.at(i);
             if (vram >= vramLimit) {
-                uint count = _gpuIDNodesIndex[gpuID].length();
-                if (count >= countLimit) {
-                    scores[validCount] = _gpuIDGroupScores[gpuID];
-                    ids[validCount] = gpuID;
-                    validCount++;
+                uint gpuIDCount = _availableGPUVramIDMap[vram].length();
+                for (uint j = 0; j < gpuIDCount; j++){
+                    bytes32 gpuID = _availableGPUVramIDMap[vram].at(j);
+                    uint count = _gpuIDNodesIndex[gpuID].length();
+                    if (count >= countLimit) {
+                        uint score = _gpuIDGroupScores[gpuID];
+                        scores[validCount] = score;
+                        ids[validCount] = gpuID;
+                        validCount++;
+                    }
                 }
             }
         }
@@ -389,23 +368,7 @@ contract Node is Ownable {
         return (ids, scores);
     }
 
-    function filterNodesByGPUVram(uint vram) public view returns (address[] memory, uint[] memory) {
-        uint length = _gpuVramNodesIndex[vram].length();
-        require(length > 0, "No available node");
-
-        address[] memory nodes = new address[](length);
-        uint[] memory scores = new uint[](length);
-
-        for (uint i = 0; i < length; i++) {
-            address nodeAddress = _gpuVramNodesIndex[vram].at(i);
-            uint score = nodesMap[nodeAddress].score;
-            nodes[i] = nodeAddress;
-            scores[i] = score;
-        }
-        return (nodes, scores);
-    }
-
-    function filterNodesByGPUID(bytes32 gpuID) public view returns (address[] memory, uint[] memory) {
+    function filterNodesByGPUID(bytes32 gpuID) private view returns (address[] memory, uint[] memory) {
         uint length = _gpuIDNodesIndex[gpuID].length();
         require(length > 0, "No available node");
 
@@ -419,5 +382,101 @@ contract Node is Ownable {
             scores[i] = score;
         }
         return (nodes, scores);
+    }
+
+    function randomSelectNodes(
+        uint k,
+        uint vramLimit,
+        bool useSameGPU,
+        bytes32 seed
+    ) external returns (address[] memory) {
+        require(k > 0, "select nodes count cannot be zero");
+
+        generator.manualSeed(seed);
+        address nodeAddress;
+        address[] memory res = new address[](k);
+
+        if (useSameGPU) {
+            (bytes32[] memory gpuIDs, uint[] memory idScores) = filterGPUID(vramLimit, k);
+            uint index = generator.multinomial(idScores, 0, idScores.length);
+            bytes32 gpuID = gpuIDs[index];
+            for (uint i = 0; i < k; i++) {
+                (address[] memory nodes, uint[] memory scores) = filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
+                startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        } else {
+            for (uint i = 0; i < k; i++) {
+                (bytes32[] memory gpuIDs, uint[] memory idScores) = filterGPUID(vramLimit, 1);
+                uint index = generator.multinomial(idScores, 0, idScores.length);
+                bytes32 gpuID = gpuIDs[index];
+                (address[] memory nodes, uint[] memory scores) = filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
+                startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        }
+
+        return res;
+    }
+
+    function selectNodesWithRoot(
+        address root,
+        uint k,
+        bytes32 seed
+    ) external returns (address[] memory) {
+        require(k > 0, "select nodes count cannot be zero");
+        require(_availableNodes.length() >= k, "No available node");
+        require(_availableNodes.contains(root), "root node should be available");
+
+        generator.manualSeed(seed);
+        address[] memory res = new address[](k);
+        // root node must be included in result
+        res[0] = root;
+        
+        if (k == 1) {
+            return res;
+        }
+
+        bytes32 rootGPUID = nodesMap[root].gpuID;
+        if (_gpuIDNodesIndex[rootGPUID].length() >= k) {
+            // get nodes with the same gpu as root node first
+            uint index = 1;
+            for (uint i = 0; i < _gpuIDNodesIndex[rootGPUID].length() && index < k; i++) {
+                address nodeAddress = _gpuIDNodesIndex[rootGPUID].at(i);
+                if (nodeAddress != root) {
+                    res[index] = nodeAddress;
+                    index++;
+                }
+            }
+        } else {
+            // get nodes with largest vram
+            uint index = 1;
+            uint lastMaxVram = 0;
+            while (index < k) {
+                uint maxVram = 0;
+                for (uint i = 0; i < _availableGPUVramSet.length(); i++) {
+                    uint vram = _availableGPUVramSet.at(i);
+                    if (vram > maxVram && (lastMaxVram == 0 || vram < lastMaxVram)) {
+                        maxVram = vram;
+                    }
+                }
+
+                for (uint i = 0; i < _availableGPUVramIDMap[maxVram].length() && index < k; i++) {
+                    bytes32 gpuID = _availableGPUVramIDMap[maxVram].at(i);
+                    for (uint j = 0; j < _gpuIDNodesIndex[gpuID].length() && index < k; j++) {
+                        address nodeAddress = _gpuIDNodesIndex[rootGPUID].at(j);
+                        if (nodeAddress != root) {
+                            res[index] = nodeAddress;
+                            index++;
+                        }
+                    }
+                }
+            }
+        }
+        return res;
     }
 }
