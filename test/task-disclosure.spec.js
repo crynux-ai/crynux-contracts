@@ -123,7 +123,7 @@ contract("Task", (accounts) => {
         node3Status = await nodeInstance.getNodeStatus(accounts[3]);
         assert.equal(node3Status.toNumber(), 0, "wrong node status for node 3");
         let bal = await cnxInstance.balanceOf(accounts[3]);
-        let expectedBalance = nodeBalances[1].add(new BN(toWei("410", "ether")));
+        let expectedBalance = nodeBalances[1].add(new BN(toWei("414", "ether")));
         assert.equal(
             bal.toString(),
             expectedBalance.toString(),
@@ -137,7 +137,7 @@ contract("Task", (accounts) => {
         node2Status = await nodeInstance.getNodeStatus(accounts[2]);
         assert.equal(node2Status.toNumber(), 5, "wrong node status for node 2");
         bal = await cnxInstance.balanceOf(accounts[2]);
-        expectedBalance = nodeBalances[0].add(new BN(toWei("10", "ether")));
+        expectedBalance = nodeBalances[0].add(new BN(toWei("20", "ether")));
         assert.equal(
             bal.toString(),
             expectedBalance.toString(),
@@ -152,7 +152,7 @@ contract("Task", (accounts) => {
         );
 
         bal = await cnxInstance.balanceOf(accounts[4]);
-        expectedBalance = nodeBalances[2].add(new BN(toWei("10", "ether")))
+        expectedBalance = nodeBalances[2].add(new BN(toWei("8", "ether")))
         assert.equal(
             bal.toString(),
             expectedBalance.toString(),
@@ -268,18 +268,22 @@ contract("Task", (accounts) => {
 
         assert.equal(
             userBalanceAfter.toString(),
-            userBalance.add(new BN(toWei("10", "ether"))).toString(),
+            userBalance.add(new BN(toWei("8", "ether"))).toString(),
             "task fee not returned"
         );
 
-        for(let i= 0; i < 2; i++) {
-            const bal = await cnxInstance.balanceOf(accounts[2 + i]);
-            assert.equal(
-                bal.toString(),
-                nodeBalances[i].add(new BN(toWei("10", "ether"))).toString(),
-                "task fee not paid"
-            );
-        }
+        let bal = await cnxInstance.balanceOf(accounts[2]);
+        assert.equal(
+            bal.toString(),
+            nodeBalances[0].add(new BN(toWei("20", "ether"))).toString(),
+            "task fee not paid"
+        );
+        bal = await cnxInstance.balanceOf(accounts[3]);
+        assert.equal(
+            bal.toString(),
+            nodeBalances[1].add(new BN(toWei("14", "ether"))).toString(),
+            "task fee not paid"
+        );
 
         const slashedNodeBalance = await cnxInstance.balanceOf(accounts[4]);
         assert.equal(
@@ -358,14 +362,16 @@ contract("Task", (accounts) => {
         });
 
         const availableNodesAfter = await nodeInstance.availableNodes();
-        assert.equal(availableNodesAfter, 1, "Node free");
+        // accounts[4] has been kicked out for its recent qos score is 19
+        assert.equal(availableNodesAfter, 0, "Node free");
 
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
         const availableNodesAfterSuccess = await nodeInstance.availableNodes();
-        assert.equal(availableNodesAfterSuccess, 2, "Node free");
+        // accounts[4] has been kicked out for its recent qos score is 19
+        assert.equal(availableNodesAfterSuccess, 1, "Node free");
 
         taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, '0', "task not deleted");
@@ -374,18 +380,22 @@ contract("Task", (accounts) => {
 
         assert.equal(
             userBalanceAfter.toString(),
-            userBalance.add(new BN(toWei("10", "ether"))).toString(),
+            userBalance.add(new BN(toWei("14", "ether"))).toString(),
             "task fee not returned"
         );
 
-        for(let i= 1; i < 3; i++) {
-            const bal = await cnxInstance.balanceOf(accounts[2 + i]);
-            assert.equal(
-                bal.toString(),
-                nodeBalances[i].add(new BN(toWei("10", "ether"))).toString(),
-                "task fee not paid"
-            );
-        }
+        let bal = await cnxInstance.balanceOf(accounts[3]);
+        assert.equal(
+            bal.toString(),
+            nodeBalances[1].add(new BN(toWei("17", "ether"))).toString(),
+            "task fee not paid"
+        );
+        bal = await cnxInstance.balanceOf(accounts[4]);
+        assert.equal(
+            bal.toString(),
+            nodeBalances[2].add(new BN(toWei("411", "ether"))).toString(),
+            "task fee not paid"
+        );
 
         const slashedNodeBalance = await cnxInstance.balanceOf(accounts[2]);
         assert.equal(
@@ -408,6 +418,8 @@ contract("Task", (accounts) => {
         await cnxInstance.transfer(accounts[2], new BN(toWei("400", "ether")));
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[2]})
         await nodeInstance.join(gpuName, gpuVram, {from: accounts[2]})
+        await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[4]})
+        await nodeInstance.join(gpuName, gpuVram, {from: accounts[4]})
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
 
@@ -476,14 +488,16 @@ contract("Task", (accounts) => {
         });
 
         const availableNodesAfter = await nodeInstance.availableNodes();
-        assert.equal(availableNodesAfter, 1, "Node free");
+        // accounts[4] has been kicked out for its recent qos score is 19
+        assert.equal(availableNodesAfter, 0, "Node free");
 
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
         const availableNodesAfterSuccess = await nodeInstance.availableNodes();
-        assert.equal(availableNodesAfterSuccess, 2, "Node free");
+        // accounts[4] has been kicked out for its recent qos score is 19
+        assert.equal(availableNodesAfterSuccess, 1, "Node free");
 
         taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, "0", "task not deleted");
@@ -492,14 +506,14 @@ contract("Task", (accounts) => {
 
         assert.equal(
             userBalanceAfter.toString(),
-            userBalance.add(new BN(toWei("10", "ether"))).toString(),
+            userBalance.add(new BN(toWei("14", "ether"))).toString(),
             "task fee not returned"
         );
 
         const bal1 = await cnxInstance.balanceOf(accounts[2]);
         assert.equal(
             bal1.toString(),
-            nodeBalances[0].add(new BN(toWei("10", "ether"))).toString(),
+            nodeBalances[0].add(new BN(toWei("20", "ether"))).toString(),
             "task fee not paid"
         );
 
@@ -513,7 +527,7 @@ contract("Task", (accounts) => {
         const bal2 = await cnxInstance.balanceOf(accounts[4]);
         assert.equal(
             bal2.toString(),
-            nodeBalances[2].add(new BN(toWei("10", "ether"))).toString(),
+            nodeBalances[2].add(new BN(toWei("408", "ether"))).toString(),
             "task fee not paid"
         );
 

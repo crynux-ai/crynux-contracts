@@ -42,6 +42,9 @@ contract Node is Ownable {
         uint score;
     }
 
+    event Slash(address nodeAddress);
+    event KickOut(address nodeAddress);
+
     // store all nodes info
     EnumerableSet.AddressSet private allNodes;
     mapping(address => NodeInfo) private nodesMap;
@@ -268,6 +271,7 @@ contract Node is Ownable {
         qos.finishTask(nodeAddress);
         // Remove the node from the list
         removeNode(nodeAddress);
+        emit Slash(nodeAddress);
     }
 
     function startTask(address nodeAddress) public {
@@ -305,6 +309,7 @@ contract Node is Ownable {
                 cnxToken.transfer(nodeAddress, requiredStakeAmount),
                 "Token transfer failed"
             );
+            emit KickOut(nodeAddress);
             return;
         }
         // update node qos score

@@ -296,3 +296,99 @@ contract("Task", async (accounts) => {
         }
     })
 })
+
+contract("Task", async (accounts) => {
+    it("select task correctly when a node is slashed", async () => {
+        const userAccount = accounts[1];
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+        const taskQueueInstance = await TaskQueue.deployed();
+
+        await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
+        await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
+
+        await prepareNetwork(
+            accounts,
+            cnxInstance,
+            nodeInstance,
+            ["NVIDIA GeForce GTX 1070", "NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti"],
+            [8, 16, 16]
+        );
+
+        const taskHash = web3.utils.soliditySha3("task hash");
+        const dataHash = web3.utils.soliditySha3("data hash");
+
+        let tx = await taskInstance.createTask(0, taskHash, dataHash, 8, new BN(toWei("40", "ether")), 1,  { from: userAccount });
+        let taskId = tx.logs[0].args.taskId;
+        let nodeRounds = {};
+
+        for (let i = 1; i < 4; i++) {
+            const nodeAddress = tx.logs[i].args.selectedNode;
+            nodeRounds[nodeAddress] = tx.logs[i].args.round;
+        }
+        
+        await taskInstance.createTask(0, taskHash, dataHash, 8, new BN(toWei("40", "ether")), 1, {from: userAccount});
+
+        const result = "0x0102030405060708";
+        const errResult = "0x0101010101010101"
+        // submit commitment
+        for (let i = 0; i < 2; i++) {
+            const [commitment, nonce] = getCommitment(result);
+            await taskInstance.submitTaskResultCommitment(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                commitment,
+                nonce,
+                { from: accounts[2 + i] });
+        }
+        const [errCommitment, errNonce] = getCommitment(errResult);
+        await taskInstance.submitTaskResultCommitment(
+            taskId,
+            nodeRounds[accounts[4]],
+            errCommitment,
+            errNonce,
+            { from: accounts[4] },
+        );
+
+        // disclose task
+        for (let i = 0; i < 2; i++) {
+            await taskInstance.discloseTaskResult(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                result,
+                { from: accounts[2 + i] },
+            );
+        }
+        await taskInstance.discloseTaskResult(
+            taskId,
+            nodeRounds[accounts[4]],
+            errResult,
+            { from: accounts[4] },
+        );
+
+        await taskInstance.reportResultsUploaded(
+            taskId,
+            nodeRounds[accounts[2]],
+            { from: accounts[2] },
+        );
+
+        let status = await nodeInstance.getNodeStatus(accounts[4]);
+        assert.equal(status.toNumber(), 0, "Wrong slashed node status");
+
+        let queueSize = await taskQueueInstance.size();
+        assert.equal(queueSize, 1, "Wrong queue size");
+
+        await prepareNode(accounts[5], cnxInstance, nodeInstance, "NVIDIA GeForce GTX 1070", 8)
+
+        queueSize = await taskQueueInstance.size();
+        assert.equal(queueSize, 0, "Wrong queue size");
+
+        let nodeTaskId = (await taskInstance.getNodeTask(accounts[2])).toNumber();
+        assert.equal(nodeTaskId, 2, "Wrong node task id");
+        nodeTaskId = (await taskInstance.getNodeTask(accounts[3])).toNumber();
+        assert.equal(nodeTaskId, 2, "Wrong node task id");
+        nodeTaskId = (await taskInstance.getNodeTask(accounts[5])).toNumber();
+        assert.equal(nodeTaskId, 2, "Wrong node task id");
+    })
+})

@@ -31,20 +31,21 @@ const prepareTask = async (accounts, cnxTokenInstance, nodeInstance, taskInstanc
     // Create the task.
 
     const balBefore = await cnxTokenInstance.balanceOf(accounts[1]);
+    const taskFee = new BN(toWei("42", "ether"));
 
     const tx = await taskInstance.createTask(
         taskType,
         web3.utils.soliditySha3("task hash"),
         web3.utils.soliditySha3("data hash"),
         vramLimit,
-        new BN(toWei("30", "ether")),
+        taskFee,
         1,
         {from: accounts[1]}
     );
 
     const balAfter = await cnxTokenInstance.balanceOf(accounts[1]);
 
-    assert.equal(balBefore.toString(), balAfter.add(new BN(toWei("30", "ether"))).toString(), "user task fee not paid");
+    assert.equal(balBefore.toString(), balAfter.add(taskFee).toString(), "user task fee not paid");
 
     assert.equal(tx.logs.length, 4, "wrong log number");
 
