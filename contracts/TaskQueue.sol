@@ -13,6 +13,7 @@ contract TaskQueue is Ownable {
     address private taskContractAddress;
 
     uint private count;
+    uint private sizeLimit;
 
     // store task vrams for sd task type and gpt task type
     EnumerableSet.UintSet private sdTaskVrams;
@@ -22,10 +23,16 @@ contract TaskQueue is Ownable {
     mapping(uint => TaskHeap) private sdTaskHeaps;
     mapping(uint => TaskHeap) private gptTaskHeaps;
 
-    constructor() {}
+    constructor() {
+        sizeLimit = 50;
+    }
 
     function updateTaskContractAddress(address taskContract) public onlyOwner {
         taskContractAddress = taskContract;
+    }
+
+    function updateSizeLimit(uint limit) public onlyOwner {
+        sizeLimit = limit;
     }
 
     function pushTask(
@@ -40,6 +47,7 @@ contract TaskQueue is Ownable {
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskType == 0 || taskType == 1, "Invalid task type");
+        require(count < sizeLimit, "Task queue is full");
 
         TaskInQueue memory task = TaskInQueue({
             id: taskId,
