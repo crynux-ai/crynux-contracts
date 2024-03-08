@@ -6,10 +6,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./Node.sol";
 import "./Hamming.sol";
+import "./Random.sol";
 import "./QOS.sol";
 import "./TaskQueue.sol";
 
 contract Task is Ownable {
+    using Random for Random.Generator;
+
     uint private TASK_TYPE_SD = 0;
     uint private TASK_TYPE_LLM = 1;
 
@@ -47,6 +50,8 @@ contract Task is Ownable {
 
     uint256 private numSuccessTasks;
     uint256 private numAbortedTasks;
+
+    Random.Generator private generator;
 
     event TaskPending(
         uint256 taskId,
@@ -132,7 +137,7 @@ contract Task is Ownable {
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
         );
         try
-            node.randomSelectNodes(
+            this.randomSelectNodes(
                 3,
                 vramLimit,
                 taskType == TASK_TYPE_LLM,
@@ -187,21 +192,85 @@ contract Task is Ownable {
         }
     }
 
-    function nodeAvailableCallback(address root) external {
-        bytes32 seed = keccak256(
-            abi.encodePacked(blockhash(block.number - 1), root)
-        );
+    function randomSelectNodes(
+        uint k,
+        uint vramLimit,
+        bool useSameGPU,
+        bytes32 seed
+    ) external returns (address[] memory) {
+        require(k > 0, "select nodes count cannot be zero");
 
-        try node.selectNodesWithRoot(root, 3, seed) returns (
+        generator.manualSeed(seed);
+        address nodeAddress;
+        address[] memory res = new address[](k);
+
+        if (useSameGPU) {
+            (bytes32[] memory gpuIDs, uint[] memory idScores) = node
+                .filterGPUID(vramLimit, k);
+            uint index = generator.multinomial(idScores, 0, idScores.length);
+            bytes32 gpuID = gpuIDs[index];
+            for (uint i = 0; i < k; i++) {
+                (address[] memory nodes, uint[] memory scores) = node
+                    .filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
+                node.startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        } else {
+            for (uint i = 0; i < k; i++) {
+                (bytes32[] memory gpuIDs, uint[] memory idScores) = node
+                    .filterGPUID(vramLimit, 1);
+                uint index = generator.multinomial(
+                    idScores,
+                    0,
+                    idScores.length
+                );
+                bytes32 gpuID = gpuIDs[index];
+                (address[] memory nodes, uint[] memory scores) = node
+                    .filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
+                node.startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        }
+
+        return res;
+    }
+
+    function nodeAvailableCallback(address root) external {
+        if (taskQueue.size() == 0) {
+            return;
+        }
+
+        try node.selectNodesWithRoot(root, 3) returns (
             address[] memory nodeAddresses
         ) {
-            try
-                taskQueue.popTask(
-                    nodeAddresses[0],
-                    nodeAddresses[1],
-                    nodeAddresses[2]
-                )
-            returns (TaskInQueue memory task) {
+            bool sameGPU = true;
+            uint minVram = 0;
+            bytes32 gpuID = bytes32(0);
+
+            for (uint i = 0; i < 3; i++) {
+                Node.NodeInfo memory nodeInfo = node.getNodeInfo(
+                    nodeAddresses[i]
+                );
+                if (i == 0) {
+                    minVram = nodeInfo.gpu.vram;
+                    gpuID = nodeInfo.gpuID;
+                } else {
+                    if (nodeInfo.gpu.vram < minVram) {
+                        minVram = nodeInfo.gpu.vram;
+                    }
+                    if (sameGPU && nodeInfo.gpuID != gpuID) {
+                        sameGPU = false;
+                    }
+                }
+            }
+
+            try taskQueue.popTask(sameGPU, minVram) returns (
+                TaskInQueue memory task
+            ) {
                 TaskInfo memory taskInfo;
 
                 taskInfo.id = task.id;

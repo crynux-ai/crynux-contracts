@@ -174,46 +174,6 @@ contract("Node", (accounts) => {
         let nodeAddress;
         let nodeInfo;
 
-        // filter gpu vram
-        let res;
-
-        try {
-            await nodeInstance.filterGPUVram(24, 2);
-            assert.fail("filterGPUVram not reverted")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-
-        try {
-            await nodeInstance.filterGPUVram(48, 1);
-            assert.fail("filterGPUVram not reverted")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-
-        res = await nodeInstance.filterGPUVram(8, 1);
-        let vrams = res[0].map(v => v.toNumber());
-        let counts = res[1];
-        assert.equal(vrams.length, 3, "Wrong vrams count");
-        assert.include(vrams, 8, "Wrong vrams element");
-        assert.include(vrams, 16, "Wrong vrams element");
-        assert.include(vrams, 24, "Wrong vrams element");
-        assert.equal(counts[vrams.indexOf(8)], 4, "Wrong vrams counts element");
-        assert.equal(counts[vrams.indexOf(16)], 1, "Wrong vrams counts element");
-        assert.equal(counts[vrams.indexOf(24)], 1, "Wrong vrams counts element");
-
-        // select node by gpu vram
-        nodeAddress = await nodeInstance.selectNodeByGPUVram(8, crypto.randomInt(2 ** 31 - 1));
-        nodeInfo = await nodeInstance.getNodeInfo(nodeAddress);
-        assert.equal(Number(nodeInfo.gpu.vram), 8, "Wrong sampled node by gpu memory");
-
-        try {
-            await nodeInstance.selectNodeByGPUVram(48, crypto.randomInt(2 ** 31 - 1));
-            assert.fail("selectNodeByGPUVram not reverted");
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-
         // filter gpu id
         try {
             await nodeInstance.filterGPUID(16, 2);
@@ -231,12 +191,11 @@ contract("Node", (accounts) => {
         // sample node by gpu id
         res = await nodeInstance.filterGPUID(24, 1);
         let gpuIDs = res[0];
-        counts = res[1];
         assert.equal(gpuIDs.length, 1, "Wrong gpu ids count");
-        assert.equal(counts[0], 1, "Wrong gpu ids count element")
         const gpuID = gpuIDs[0];
 
-        nodeAddress = await nodeInstance.selectNodeByGPUID(gpuID, crypto.randomInt(2 ** 31 - 1));
+        res = await nodeInstance.filterNodesByGPUID(gpuID);
+        nodeAddress = res[0][0];
         nodeInfo = await nodeInstance.getNodeInfo(nodeAddress);
         assert.equal(nodeInfo.gpu.name, "NVIDIA GeForce GTX 4090", "Wrong sample node by gpu id");
 
@@ -249,28 +208,49 @@ contract("Node", (accounts) => {
             assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         try {
-            await nodeInstance.filterGPUVram(24, 1);
-            assert.fail("filterGPUVram not reverted");
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-        try {
-            await nodeInstance.selectNodeByGPUID(gpuID, crypto.randomInt(2 ** 31 - 1));
+            await nodeInstance.filterNodesByGPUID(gpuID);
             assert.fail("selectNodeByGPUID not reverted");
         } catch (e) {
             assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
-        try {
-            await nodeInstance.selectNodeByGPUVram(24, crypto.randomInt(2 ** 31 - 1));
-            assert.fail("selectNodeByGPUVram not reverted");
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-
-        // sample nodes
-        nodeAddress = await nodeInstance.selectNode(crypto.randomInt(2 ** 31 - 1));
-        nodeInfo = await nodeInstance.getNodeInfo(nodeAddress);
-        assert.isAtLeast(Number(nodeInfo.gpu.vram), 8, "Wrong node gpu vram");
-        assert.equal(nodeInfo.status, 1, "Wrong node status");
     })
 });
+
+contract("Node", async (accounts) => {
+    it("select nodes with root", async () => {
+        const gpuNames = [
+            "NVIDIA GeForce GTX 1070 Ti",
+            "NVIDIA GeForce GTX 4060",
+            "NVIDIA GeForce GTX 4060",
+        ];
+        const gpuVrams = [8, 16, 16];
+
+        const nodeInstance = await Node.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+
+        for (let i = 0; i < 3; i++) {
+            const nodeAddress = accounts[i + 1];
+
+            await cnxInstance.transfer(nodeAddress, new BN(toWei("400", "ether")));
+            await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), { from: nodeAddress });
+
+            await nodeInstance.join(gpuNames[i], gpuVrams[i], { from: nodeAddress });
+        }
+
+        let nodes = await nodeInstance.selectNodesWithRoot(accounts[3], 3, {from: accounts[0]});
+        assert.include(nodes, accounts[1], "Wrong selected nodes");
+        assert.include(nodes, accounts[2], "Wrong selected nodes");
+        assert.include(nodes, accounts[3], "Wrong selected nodes");
+
+        await cnxInstance.transfer(accounts[4], new BN(toWei("400", "ether")));
+        await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), { from: accounts[4] });
+
+        await nodeInstance.join("NVIDIA GeForce GTX 4060", 16, { from: accounts[4] });
+
+        nodes = await nodeInstance.selectNodesWithRoot(accounts[3], 3, {from: accounts[0]});
+        assert.include(nodes, accounts[2], "Wrong selected nodes");
+        assert.include(nodes, accounts[3], "Wrong selected nodes");
+        assert.include(nodes, accounts[4], "Wrong selected nodes");
+
+    })
+})

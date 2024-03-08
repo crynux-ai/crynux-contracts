@@ -22,13 +22,8 @@ contract("Task", async (accounts) => {
         const taskType = 0;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
-
-        try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, 0, { from: userAccount });
-            assert.fail("should not pass")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
+        const taskFee = new BN(toWei("200", "ether"));
+        const cap = 1;
 
         await prepareNetwork(
             accounts,
@@ -38,14 +33,8 @@ contract("Task", async (accounts) => {
             [8, 16, 16]
         );
 
-        try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, 16, { from: userAccount });
-            assert.fail("should not pass")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
 
-        let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, { from: userAccount });
+        let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, taskFee, cap,  { from: userAccount });
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
             return ev.selectedNode === accounts[2];
         });
@@ -58,13 +47,13 @@ contract("Task", async (accounts) => {
 
         let taskId = tx.logs[0].args.taskId;
         // cancel task
-        for (let i = 0; i < 3; i++) {
+        for (let i = 1; i < 4; i++) {
             const nodeAddress = tx.logs[i].args.selectedNode;
             const round = tx.logs[i].args.round;
             await taskInstance.reportTaskError(taskId, round, { from: nodeAddress });
         }
 
-        tx = await taskInstance.createTask(taskType, taskHash, dataHash, 0, { from: userAccount });
+        tx = await taskInstance.createTask(taskType, taskHash, dataHash, 0, taskFee, cap, { from: userAccount });
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
             return ev.selectedNode === accounts[2];
         });
@@ -77,7 +66,7 @@ contract("Task", async (accounts) => {
 
         taskId = tx.logs[0].args.taskId;
         // cancel task
-        for (let i = 0; i < 3; i++) {
+        for (let i = 1; i < 4; i++) {
             const nodeAddress = tx.logs[i].args.selectedNode;
             const round = tx.logs[i].args.round;
             await taskInstance.reportTaskError(taskId, round, { from: nodeAddress });
@@ -87,7 +76,9 @@ contract("Task", async (accounts) => {
             await nodeInstance.quit({ from: accounts[i + 2] });
         }
     })
+})
 
+contract("Task", async (accounts) => {
     it("should select nodes correctly for LLM type task", async () => {
         const userAccount = accounts[1];
         const taskInstance = await Task.deployed();
@@ -100,13 +91,8 @@ contract("Task", async (accounts) => {
         const taskType = 1;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
-
-        try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, 0, { from: userAccount });
-            assert.fail("should not pass")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
+        const taskFee = new BN(toWei("200", "ether"));
+        const cap = 1;
 
         await prepareNetwork(
             accounts,
@@ -116,23 +102,9 @@ contract("Task", async (accounts) => {
             [8, 16, 16]
         );
 
-        try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, 8, { from: userAccount });
-            assert.fail("should not pass")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-
-        try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, 16, { from: userAccount });
-            assert.fail("should not pass")
-        } catch (e) {
-            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
-        }
-
         await prepareNode(accounts[5], cnxInstance, nodeInstance, "NVIDIA GeForce RTX 4060 Ti", 16);
 
-        let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, { from: userAccount });
+        let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, taskFee, cap, { from: userAccount });
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
             return ev.selectedNode === accounts[3];
         });
@@ -143,16 +115,15 @@ contract("Task", async (accounts) => {
             return ev.selectedNode === accounts[5];
         });
 
-
         let taskId = tx.logs[0].args.taskId;
         // cancel task
-        for (let i = 0; i < 3; i++) {
+        for (let i = 1; i < 4; i++) {
             const nodeAddress = tx.logs[i].args.selectedNode;
             const round = tx.logs[i].args.round;
             await taskInstance.reportTaskError(taskId, round, { from: nodeAddress });
         }
 
-        tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, { from: userAccount });
+        tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, taskFee, cap, { from: userAccount });
         truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
             return ev.selectedNode === accounts[3];
         });
@@ -165,7 +136,7 @@ contract("Task", async (accounts) => {
 
         taskId = tx.logs[0].args.taskId;
         // cancel task
-        for (let i = 0; i < 3; i++) {
+        for (let i = 1; i < 4; i++) {
             const nodeAddress = tx.logs[i].args.selectedNode;
             const round = tx.logs[i].args.round;
             await taskInstance.reportTaskError(taskId, round, { from: nodeAddress });
@@ -175,7 +146,9 @@ contract("Task", async (accounts) => {
             await nodeInstance.quit({ from: accounts[i + 2] });
         }
     })
+})
 
+contract("Task", async (accounts) => {
     it("should revert when nodes not enough and a task is running", async () => {
         const userAccount = accounts[1];
         const taskInstance = await Task.deployed();

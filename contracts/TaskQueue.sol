@@ -4,69 +4,15 @@ pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import "./Node.sol";
-
-struct TaskInQueue {
-    uint256 id;
-    uint taskType;
-    address creator;
-    bytes32 taskHash;
-    bytes32 dataHash;
-    uint vramLimit;
-    uint taskFee;
-    uint price;
-}
-
-struct TaskHeap {
-    TaskInQueue[] tasks;
-}
-
-library TaskHeap_impl {
-    function insert(TaskHeap storage heap, TaskInQueue memory task) internal {
-        heap.tasks.push(task);
-        uint index = heap.tasks.length - 1;
-        for (; index > 0 && task.price > heap.tasks[(index - 1) / 2].price; index = (index - 1) / 2) {
-            heap.tasks[index] = heap.tasks[(index - 1) / 2];
-        }
-        heap.tasks[index] = task;
-    }
-
-    function size(TaskHeap storage heap) internal view returns (uint) {
-        return heap.tasks.length;
-    }
-
-    function top(TaskHeap storage heap) internal view returns (TaskInQueue memory) {
-        return heap.tasks[0];
-    }
-
-    function pop(TaskHeap storage heap) internal {
-        TaskInQueue memory last = heap.tasks[heap.tasks.length - 1];
-
-        heap.tasks.pop();
-
-        uint index = 0;
-        while (2 * index + 1 < heap.tasks.length) {
-            uint nextIndex = 2 * index + 1;
-            if (nextIndex + 1 < heap.tasks.length && heap.tasks[nextIndex + 1].price > heap.tasks[nextIndex].price) {
-                nextIndex++;
-            }
-            if (last.price >= heap.tasks[nextIndex].price) {
-                break;
-            }
-            heap.tasks[index] = heap.tasks[nextIndex];
-            index = nextIndex;
-        }
-        heap.tasks[index] = last;
-    }
-}
+import "./TaskHeap.sol";
 
 contract TaskQueue is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
     using TaskHeap_impl for TaskHeap;
 
-    Node node;
-
     address private taskContractAddress;
+
+    uint private count;
 
     // store task vrams for sd task type and gpt task type
     EnumerableSet.UintSet private sdTaskVrams;
@@ -76,9 +22,7 @@ contract TaskQueue is Ownable {
     mapping(uint => TaskHeap) private sdTaskHeaps;
     mapping(uint => TaskHeap) private gptTaskHeaps;
 
-    constructor(Node nodeInstance) {
-        node = nodeInstance;
-    }
+    constructor() {}
 
     function updateTaskContractAddress(address taskContract) public onlyOwner {
         taskContractAddress = taskContract;
@@ -115,20 +59,17 @@ contract TaskQueue is Ownable {
             gptTaskVrams.add(vramLimit);
             gptTaskHeaps[vramLimit].insert(task);
         }
+        count++;
     }
 
-    function popTask(address node1, address node2, address node3) public returns (TaskInQueue memory) {
-        Node.NodeInfo memory nodeInfo1 = node.getNodeInfo(node1);
-        Node.NodeInfo memory nodeInfo2 = node.getNodeInfo(node2);
-        Node.NodeInfo memory nodeInfo3 = node.getNodeInfo(node3);
+    function popTask(bool sameGPU, uint vramLimit) public returns (TaskInQueue memory) {
+        require(count > 0, "No available task");
 
         bool isGPT = false;
         uint resultVram = 0;
         uint maxPrice = 0;
 
-        uint vramLimit = nodeInfo1.gpu.vram;
-
-        if (nodeInfo1.gpuID == nodeInfo2.gpuID && nodeInfo1.gpuID == nodeInfo3.gpuID) {
+        if (sameGPU) {
             for (uint i = 0; i < gptTaskVrams.length(); i++) {
                 uint vram = gptTaskVrams.at(i);
                 if (vram <= vramLimit) {
@@ -140,12 +81,6 @@ contract TaskQueue is Ownable {
                     }
                 }
             }
-        }
-        if (nodeInfo2.gpu.vram < vramLimit) {
-            vramLimit = nodeInfo2.gpu.vram;
-        }
-        if (nodeInfo3.gpu.vram < vramLimit) {
-            vramLimit = nodeInfo3.gpu.vram;
         }
 
         for (uint i = 0; i < sdTaskVrams.length(); i++) {
@@ -178,6 +113,11 @@ contract TaskQueue is Ownable {
                 sdTaskVrams.remove(resultVram);
             }
         }
+        count--;
         return result;
+    }
+
+    function size() public view returns (uint) {
+        return count;
     }
 }
