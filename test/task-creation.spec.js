@@ -45,13 +45,13 @@ contract("Task", (accounts) => {
 
         const tx = await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap, {from: userAccount});
 
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[2] && ev.taskType == taskType;
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[3] && ev.taskType == taskType;
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[4] && ev.taskType == taskType;
         });
 

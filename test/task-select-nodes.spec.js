@@ -35,13 +35,13 @@ contract("Task", async (accounts) => {
 
 
         let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, taskFee, cap,  { from: userAccount });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[2];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[3];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[4];
         });
 
@@ -54,13 +54,13 @@ contract("Task", async (accounts) => {
         }
 
         tx = await taskInstance.createTask(taskType, taskHash, dataHash, 0, taskFee, cap, { from: userAccount });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[2];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[3];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[4];
         });
 
@@ -105,13 +105,13 @@ contract("Task", async (accounts) => {
         await prepareNode(accounts[5], cnxInstance, nodeInstance, "NVIDIA GeForce RTX 4060 Ti", 16);
 
         let tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, taskFee, cap, { from: userAccount });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[3];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[4];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[5];
         });
 
@@ -124,13 +124,13 @@ contract("Task", async (accounts) => {
         }
 
         tx = await taskInstance.createTask(taskType, taskHash, dataHash, 8, taskFee, cap, { from: userAccount });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[3];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[4];
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[5];
         });
 

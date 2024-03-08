@@ -60,7 +60,7 @@ contract Task is Ownable {
         bytes32 taskHash,
         bytes32 dataHash
     );
-    event TaskCreated(
+    event TaskStarted(
         uint256 taskId,
         uint256 taskType,
         address indexed creator,
@@ -156,7 +156,7 @@ contract Task is Ownable {
                 address nodeAddress = nodeAddresses[i];
                 tasks[taskInfo.id].selectedNodes.push(nodeAddress);
                 nodeTasks[nodeAddress] = taskInfo.id;
-                emit TaskCreated(
+                emit TaskStarted(
                     taskInfo.id,
                     taskType,
                     taskInfo.creator,
@@ -294,7 +294,7 @@ contract Task is Ownable {
                     tasks[taskInfo.id].selectedNodes.push(nodeAddress);
                     nodeTasks[nodeAddress] = taskInfo.id;
                     node.startTask(nodeAddress);
-                    emit TaskCreated(
+                    emit TaskStarted(
                         taskInfo.id,
                         taskInfo.taskType,
                         taskInfo.creator,
