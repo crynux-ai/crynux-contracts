@@ -392,3 +392,35 @@ contract("Task", async (accounts) => {
         assert.equal(nodeTaskId, 2, "Wrong node task id");
     })
 })
+
+contract("Task", async (accounts) => {
+    it("create task should be failed when task queue is full", async () => {
+        const userAccount = accounts[1];
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+        const taskQueueInstance = await TaskQueue.deployed();
+
+        await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
+        await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
+
+        const taskHash = web3.utils.soliditySha3("task hash");
+        const dataHash = web3.utils.soliditySha3("data hash");
+        const taskFee = new BN(toWei("30", "ether"));
+
+        await taskQueueInstance.updateSizeLimit(3);
+
+        for (let i = 0; i < 3; i++) {
+            const tx = await taskInstance.createTask(0, taskHash, dataHash, 8, taskFee, 1,  { from: userAccount });
+            truffleAssert.eventEmitted(tx, 'TaskPending', (ev) => {
+                return ev.creator == userAccount;
+            });
+        }
+
+        await truffleAssert.reverts(
+            taskInstance.createTask(0, taskHash, dataHash, 8, taskFee, 1,  { from: userAccount }),
+            "Task queue is full",
+            "Create task not fail"
+        );
+    })
+})
