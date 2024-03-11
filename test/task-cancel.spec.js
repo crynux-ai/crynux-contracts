@@ -59,12 +59,16 @@ contract("Task", (accounts) => {
             assert.equal(nodeBalances[i - 2].toString(), balance.toString());
         }
     });
+});
 
+contract("Task", (accounts) => {
     it("should cancel successfully after two nodes disclose", async () => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
 
+        await prepareNetwork(accounts, cnxInstance, nodeInstance);
+        await prepareUser(accounts[1], cnxInstance, taskInstance);
 
         const creatorBalance = await cnxInstance.balanceOf(accounts[1]);
         const nodeBalances = [];
@@ -104,21 +108,25 @@ contract("Task", (accounts) => {
         });
 
         const afterCreatorBalance = await cnxInstance.balanceOf(accounts[1]);
-        assert.equal(creatorBalance.toString(), afterCreatorBalance.add(new BN(toWei("10", "ether"))).toString());
+        assert.equal(creatorBalance.toString(), afterCreatorBalance.add(new BN(toWei("14", "ether"))).toString());
 
         let balance = await cnxInstance.balanceOf(accounts[2]);
-        assert.equal(nodeBalances[0].toString(), balance.toString());
+        assert.equal(nodeBalances[0].toString(), balance.toString()); 
         balance = await cnxInstance.balanceOf(accounts[3]);
-        assert.equal(nodeBalances[1].add(new BN(toWei("10", "ether"))).toString(), balance.toString());
+        assert.equal(nodeBalances[1].add(new BN(toWei("14", "ether"))).toString(), balance.toString());
         balance = await cnxInstance.balanceOf(accounts[4]);
         assert.equal(nodeBalances[2].toString(), balance.toString());
     });
+})
 
+contract("Task", (accounts) => {
     it("should cancel successfully after two nodes report error", async () => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
 
+        await prepareNetwork(accounts, cnxInstance, nodeInstance);
+        await prepareUser(accounts[1], cnxInstance, taskInstance);
 
         const creatorBalance = await cnxInstance.balanceOf(accounts[1]);
         const nodeBalances = [];
@@ -144,13 +152,15 @@ contract("Task", (accounts) => {
         });
 
         const afterCreatorBalance = await cnxInstance.balanceOf(accounts[1]);
-        assert.equal(creatorBalance.toString(), afterCreatorBalance.add(new BN(toWei("20", "ether"))).toString());
+        assert.equal(creatorBalance.toString(), afterCreatorBalance.add(new BN(toWei("34", "ether"))).toString());
 
         let balance = await cnxInstance.balanceOf(accounts[2]);
-        assert.equal(nodeBalances[0].add(new BN(toWei("10", "ether"))).toString(), balance.toString());
+        assert.equal(nodeBalances[0].add(new BN(toWei("20", "ether"))).toString(), balance.toString());
         balance = await cnxInstance.balanceOf(accounts[3]);
-        assert.equal(nodeBalances[1].add(new BN(toWei("10", "ether"))).toString(), balance.toString());
+        assert.equal(nodeBalances[1].add(new BN(toWei("14", "ether"))).toString(), balance.toString());
         balance = await cnxInstance.balanceOf(accounts[4]);
+        console.log(nodeBalances[2].toString())
+        console.log(balance.toString())
         assert.equal(nodeBalances[2].toString(), balance.toString());
     });
-});
+})

@@ -13,9 +13,6 @@ const prepareNetwork = async (accounts, cnxTokenInstance, nodeInstance, gpuNames
     for(let i = 0; i < 3; i++) {
         await prepareNode(accounts[i + 2], cnxTokenInstance, nodeInstance, gpuNames[i], gpuVrams[i]);
     }
-
-    const availableNodes = await nodeInstance.availableNodes();
-    assert.equal(availableNodes.toNumber(), 3, "Wrong number of available nodes");
 };
 
 const prepareNode = async (nodeAccount, cnxTokenInstance, nodeInstance, gpuName = "NVIDIA GeForce GTX 1070 Ti", gpuVram = 8) => {
@@ -34,25 +31,28 @@ const prepareTask = async (accounts, cnxTokenInstance, nodeInstance, taskInstanc
     // Create the task.
 
     const balBefore = await cnxTokenInstance.balanceOf(accounts[1]);
+    const taskFee = new BN(toWei("42", "ether"));
 
     const tx = await taskInstance.createTask(
         taskType,
         web3.utils.soliditySha3("task hash"),
         web3.utils.soliditySha3("data hash"),
         vramLimit,
+        taskFee,
+        1,
         {from: accounts[1]}
     );
 
     const balAfter = await cnxTokenInstance.balanceOf(accounts[1]);
 
-    assert.equal(balBefore.toString(), balAfter.add(new BN(toWei("30", "ether"))).toString(), "user task fee not paid");
+    assert.equal(balBefore.toString(), balAfter.add(taskFee).toString(), "user task fee not paid");
 
-    assert.equal(tx.logs.length, 3, "wrong log number");
+    assert.equal(tx.logs.length, 4, "wrong log number");
 
     const taskId = tx.logs[0].args.taskId;
     let nodeRounds = {};
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 1; i < 4; i++) {
         const nodeAddress = tx.logs[i].args.selectedNode;
         nodeRounds[nodeAddress] = tx.logs[i].args.round;
     }

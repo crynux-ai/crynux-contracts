@@ -5,9 +5,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./Node.sol";
-import "./Random.sol";
 import "./Hamming.sol";
+import "./Random.sol";
 import "./QOS.sol";
+import "./TaskQueue.sol";
 
 contract Task is Ownable {
     using Random for Random.Generator;
@@ -32,16 +33,18 @@ contract Task is Ownable {
         bool aborted;
         uint256 timeout;
         uint256 balance;
+        uint256 totalBalance;
     }
 
     Node private node;
     QOS private qos;
     IERC20 private cnxToken;
+    TaskQueue private taskQueue;
+
     mapping(uint => TaskInfo) private tasks;
     mapping(address => uint256) private nodeTasks;
     uint256 private nextTaskId;
 
-    uint256 private taskFeePerNode;
     uint private distanceThreshold;
     uint256 private timeout;
 
@@ -50,7 +53,14 @@ contract Task is Ownable {
 
     Random.Generator private generator;
 
-    event TaskCreated(
+    event TaskPending(
+        uint256 taskId,
+        uint256 taskType,
+        address indexed creator,
+        bytes32 taskHash,
+        bytes32 dataHash
+    );
+    event TaskStarted(
         uint256 taskId,
         uint256 taskType,
         address indexed creator,
@@ -63,11 +73,16 @@ contract Task is Ownable {
     event TaskSuccess(uint256 taskId, bytes result, address indexed resultNode);
     event TaskAborted(uint256 taskId, string reason);
 
-    constructor(Node nodeInstance, IERC20 tokenInstance, QOS qosInstance) {
+    constructor(
+        Node nodeInstance,
+        IERC20 tokenInstance,
+        QOS qosInstance,
+        TaskQueue taskQueueInstance
+    ) {
         node = nodeInstance;
         cnxToken = tokenInstance;
         qos = qosInstance;
-        taskFeePerNode = 10 * 10 ** 18;
+        taskQueue = taskQueueInstance;
         nextTaskId = 1;
         distanceThreshold = 5;
         timeout = 15 minutes;
@@ -79,10 +94,10 @@ contract Task is Ownable {
         uint taskType,
         bytes32 taskHash,
         bytes32 dataHash,
-        uint vramLimit
+        uint vramLimit,
+        uint taskFee,
+        uint cap
     ) public {
-        uint256 taskFee = taskFeePerNode * 3;
-
         require(
             taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM,
             "Invalid task type"
@@ -102,6 +117,7 @@ contract Task is Ownable {
         taskInfo.creator = msg.sender;
         taskInfo.timeout = block.timestamp + timeout;
         taskInfo.balance = taskFee;
+        taskInfo.totalBalance = taskFee;
         taskInfo.taskType = taskType;
         taskInfo.taskHash = taskHash;
         taskInfo.dataHash = dataHash;
@@ -112,8 +128,6 @@ contract Task is Ownable {
         taskInfo.results = new bytes[](3);
         taskInfo.aborted = false;
 
-        tasks[taskInfo.id] = taskInfo;
-
         require(
             cnxToken.transferFrom(msg.sender, address(this), taskFee),
             "Task fee payment failed"
@@ -122,65 +136,186 @@ contract Task is Ownable {
         bytes32 seed = keccak256(
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
         );
-        address[] memory nodeAddresses = getSelectedNodes(
-            3,
-            vramLimit,
-            taskType == TASK_TYPE_LLM,
-            seed
-        );
-        for (uint i = 0; i < 3; i++) {
-            address nodeAddress = nodeAddresses[i];
-            tasks[taskInfo.id].selectedNodes.push(nodeAddress);
-            nodeTasks[nodeAddress] = taskInfo.id;
-            emit TaskCreated(
+        try
+            this.randomSelectNodes(
+                3,
+                vramLimit,
+                taskType == TASK_TYPE_LLM,
+                seed
+            )
+        returns (address[] memory nodeAddresses) {
+            emit TaskPending(
                 taskInfo.id,
                 taskType,
-                msg.sender,
-                nodeAddress,
+                taskInfo.creator,
                 taskHash,
-                dataHash,
-                i
+                dataHash
             );
+            tasks[taskInfo.id] = taskInfo;
+            for (uint i = 0; i < 3; i++) {
+                address nodeAddress = nodeAddresses[i];
+                tasks[taskInfo.id].selectedNodes.push(nodeAddress);
+                nodeTasks[nodeAddress] = taskInfo.id;
+                emit TaskStarted(
+                    taskInfo.id,
+                    taskType,
+                    taskInfo.creator,
+                    nodeAddress,
+                    taskHash,
+                    dataHash,
+                    i
+                );
+            }
+        } catch Error(string memory reason) {
+            string memory target = "No available node";
+            if (keccak256(bytes(reason)) == keccak256(bytes(target))) {
+                emit TaskPending(
+                    taskInfo.id,
+                    taskType,
+                    taskInfo.creator,
+                    taskHash,
+                    dataHash
+                );
+                taskQueue.pushTask(
+                    taskInfo.id,
+                    taskType,
+                    taskInfo.creator,
+                    taskHash,
+                    dataHash,
+                    vramLimit,
+                    taskFee,
+                    taskFee / cap
+                );
+            } else {
+                revert(reason);
+            }
         }
     }
 
-    function getSelectedNodes(
+    function randomSelectNodes(
         uint k,
         uint vramLimit,
         bool useSameGPU,
         bytes32 seed
-    ) private returns (address[] memory) {
+    ) external returns (address[] memory) {
+        require(k > 0, "select nodes count cannot be zero");
+
         generator.manualSeed(seed);
         address nodeAddress;
         address[] memory res = new address[](k);
 
         if (useSameGPU) {
-            (bytes32[] memory gpuIDs, uint[] memory counts) = node.filterGPUID(vramLimit, k);
-            uint index = generator.multinomial(counts, 0, counts.length);
+            (bytes32[] memory gpuIDs, uint[] memory idScores) = node
+                .filterGPUID(vramLimit, k);
+            uint index = generator.multinomial(idScores, 0, idScores.length);
             bytes32 gpuID = gpuIDs[index];
             for (uint i = 0; i < k; i++) {
-                nodeAddress = node.selectNodeByGPUID(gpuID, generator.randint());
-                node.startTask(nodeAddress);
-                res[i] = nodeAddress;
-            }
-        } else if (vramLimit > 0) {
-            for (uint i = 0; i < k; i++) {
-                (uint[] memory vrams, uint[] memory counts) = node.filterGPUVram(vramLimit, 1);
-                uint index = generator.multinomial(counts, 0, counts.length);
-                uint vram = vrams[index];
-                nodeAddress = node.selectNodeByGPUVram(vram, generator.randint());
+                (address[] memory nodes, uint[] memory scores) = node
+                    .filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
                 node.startTask(nodeAddress);
                 res[i] = nodeAddress;
             }
         } else {
             for (uint i = 0; i < k; i++) {
-                nodeAddress = node.selectNode(generator.randint());
+                (bytes32[] memory gpuIDs, uint[] memory idScores) = node
+                    .filterGPUID(vramLimit, 1);
+                uint index = generator.multinomial(
+                    idScores,
+                    0,
+                    idScores.length
+                );
+                bytes32 gpuID = gpuIDs[index];
+                (address[] memory nodes, uint[] memory scores) = node
+                    .filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
                 node.startTask(nodeAddress);
                 res[i] = nodeAddress;
             }
         }
 
         return res;
+    }
+
+    function nodeAvailableCallback(address root) external {
+        if (taskQueue.size() == 0) {
+            return;
+        }
+
+        try node.selectNodesWithRoot(root, 3) returns (
+            address[] memory nodeAddresses
+        ) {
+            bool sameGPU = true;
+            uint minVram = 0;
+            bytes32 gpuID = bytes32(0);
+
+            for (uint i = 0; i < 3; i++) {
+                Node.NodeInfo memory nodeInfo = node.getNodeInfo(
+                    nodeAddresses[i]
+                );
+                if (i == 0) {
+                    minVram = nodeInfo.gpu.vram;
+                    gpuID = nodeInfo.gpuID;
+                } else {
+                    if (nodeInfo.gpu.vram < minVram) {
+                        minVram = nodeInfo.gpu.vram;
+                    }
+                    if (sameGPU && nodeInfo.gpuID != gpuID) {
+                        sameGPU = false;
+                    }
+                }
+            }
+
+            try taskQueue.popTask(sameGPU, minVram) returns (
+                TaskInQueue memory task
+            ) {
+                TaskInfo memory taskInfo;
+
+                taskInfo.id = task.id;
+                taskInfo.taskType = task.taskType;
+                taskInfo.creator = task.creator;
+                taskInfo.taskHash = task.taskHash;
+                taskInfo.dataHash = task.dataHash;
+                taskInfo.vramLimit = task.vramLimit;
+                taskInfo.balance = task.taskFee;
+                taskInfo.totalBalance = task.taskFee;
+
+                taskInfo.isSuccess = false;
+                taskInfo.commitments = new bytes32[](3);
+                taskInfo.nonces = new bytes32[](3);
+                taskInfo.results = new bytes[](3);
+                taskInfo.aborted = false;
+
+                tasks[taskInfo.id] = taskInfo;
+                for (uint i = 0; i < 3; i++) {
+                    address nodeAddress = nodeAddresses[i];
+                    tasks[taskInfo.id].selectedNodes.push(nodeAddress);
+                    nodeTasks[nodeAddress] = taskInfo.id;
+                    node.startTask(nodeAddress);
+                    emit TaskStarted(
+                        taskInfo.id,
+                        taskInfo.taskType,
+                        taskInfo.creator,
+                        nodeAddress,
+                        taskInfo.taskHash,
+                        taskInfo.dataHash,
+                        i
+                    );
+                }
+            } catch Error(string memory reason) {
+                string memory target = "No available task";
+                if (keccak256(bytes(reason)) != keccak256(bytes(target))) {
+                    revert(reason);
+                }
+            }
+        } catch Error(string memory reason) {
+            string memory target = "No available node";
+            if (keccak256(bytes(reason)) != keccak256(bytes(target))) {
+                revert(reason);
+            }
+        }
     }
 
     function submitTaskResultCommitment(
@@ -265,7 +400,10 @@ contract Task is Ownable {
         );
 
         tasks[taskId].results[round] = result;
-        qos.addTaskScore(msg.sender, tasks[taskId].resultDisclosedRounds.length);
+        qos.addTaskScore(
+            msg.sender,
+            tasks[taskId].resultDisclosedRounds.length
+        );
         tasks[taskId].resultDisclosedRounds.push(round);
 
         checkTaskResult(taskId);
@@ -316,7 +454,10 @@ contract Task is Ownable {
         uint256 errCommitment = 1;
         tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
 
-        qos.addTaskScore(msg.sender, tasks[taskId].resultDisclosedRounds.length);
+        qos.addTaskScore(
+            msg.sender,
+            tasks[taskId].resultDisclosedRounds.length
+        );
         tasks[taskId].resultDisclosedRounds.push(round); // Set to result disclosed state, the result is a special zero value
 
         if (isCommitmentReady(taskId)) {
@@ -446,10 +587,10 @@ contract Task is Ownable {
     function abortTask(uint256 taskId) internal {
         // Return the task fee to the user
         require(
-            cnxToken.transfer(tasks[taskId].creator, taskFeePerNode * 3),
+            cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
             "Token transfer failed"
         );
-        tasks[taskId].balance -= taskFeePerNode * 3;
+        tasks[taskId].balance = 0;
 
         // Free the nodes
         for (uint i = 0; i < 3; i++) {
@@ -488,11 +629,13 @@ contract Task is Ownable {
     function settleNodeByRound(uint256 taskId, uint round) internal {
         address nodeAddress = tasks[taskId].selectedNodes[round];
         // Transfer task fee to the node
-        require(
-            cnxToken.transfer(nodeAddress, taskFeePerNode),
-            "Token transfer failed"
-        );
-        tasks[taskId].balance -= taskFeePerNode;
+        uint fee = (tasks[taskId].totalBalance *
+            qos.getCurrentTaskScore(nodeAddress)) / qos.getTaskScoreLimit();
+        if (tasks[taskId].balance - fee < 3) {
+            fee = tasks[taskId].balance;
+        }
+        require(cnxToken.transfer(nodeAddress, fee), "Token transfer failed");
+        tasks[taskId].balance -= fee;
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
@@ -512,11 +655,16 @@ contract Task is Ownable {
     function punishNodeByRound(uint256 taskId, uint round) internal {
         address nodeAddress = tasks[taskId].selectedNodes[round];
         // Transfer task fee to the node
+        uint fee = (tasks[taskId].totalBalance *
+            qos.getCurrentTaskScore(nodeAddress)) / qos.getTaskScoreLimit();
+        if (tasks[taskId].balance - fee < 3) {
+            fee = tasks[taskId].balance;
+        }
         require(
-            cnxToken.transfer(tasks[taskId].creator, taskFeePerNode),
+            cnxToken.transfer(tasks[taskId].creator, fee),
             "Token transfer failed"
         );
-        tasks[taskId].balance -= taskFeePerNode;
+        tasks[taskId].balance -= fee;
 
         // remove node's qos task score
         qos.punish(nodeAddress);
@@ -551,10 +699,6 @@ contract Task is Ownable {
             return true;
         }
         return false;
-    }
-
-    function updateTaskFeePerNode(uint256 fee) public onlyOwner {
-        taskFeePerNode = fee;
     }
 
     function updateDistanceThreshold(uint threshold) public onlyOwner {

@@ -20,8 +20,11 @@ contract("Task", (accounts) => {
         const dataHash = web3.utils.soliditySha3("data hash");
         const vramLimit = 0;
 
+        const taskFee = new BN(toWei("42", "ether"));
+        const cap = 1;
+
         try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, {from: userAccount});
+            await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap, {from: userAccount});
             assert.fail('should not pass');
         } catch (e) {
             assert.match(e.toString(), /Not enough tokens for task/, "Wrong reason: " + e.toString());
@@ -30,7 +33,7 @@ contract("Task", (accounts) => {
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
 
         try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, {from: userAccount});
+            await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap, {from: userAccount});
             assert.fail('should not pass');
         } catch (e) {
             assert.match(e.toString(), /Not enough allowance for task/, "Wrong reason: " + e.toString());
@@ -38,24 +41,17 @@ contract("Task", (accounts) => {
 
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), {from: userAccount});
 
-        try {
-            await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, {from: userAccount});
-            assert.fail('should not pass');
-        } catch (e) {
-            assert.match(e.toString(), /No available nodes/, "Wrong reason: " + e.toString());
-        }
-
         await prepareNetwork(accounts, cnxInstance, nodeInstance);
 
-        const tx = await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, {from: userAccount});
+        const tx = await taskInstance.createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap, {from: userAccount});
 
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[2] && ev.taskType == taskType;
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[3] && ev.taskType == taskType;
         });
-        truffleAssert.eventEmitted(tx, 'TaskCreated', (ev) => {
+        truffleAssert.eventEmitted(tx, 'TaskStarted', (ev) => {
             return ev.selectedNode === accounts[4] && ev.taskType == taskType;
         });
 
