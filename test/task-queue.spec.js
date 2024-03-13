@@ -394,7 +394,7 @@ contract("Task", async (accounts) => {
 })
 
 contract("Task", async (accounts) => {
-    it("create task should be failed when task queue is full", async () => {
+    it("should abort the cheapest task when task queue is full", async () => {
         const userAccount = accounts[1];
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
@@ -406,21 +406,23 @@ contract("Task", async (accounts) => {
 
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
-        const taskFee = new BN(toWei("30", "ether"));
 
         await taskQueueInstance.updateSizeLimit(3);
 
         for (let i = 0; i < 3; i++) {
-            const tx = await taskInstance.createTask(0, taskHash, dataHash, 8, taskFee, 1,  { from: userAccount });
+            const tx = await taskInstance.createTask(0, taskHash, dataHash, 8 + i, new BN(toWei(`${10 * (i + 1)}`, "ether")), 1,  { from: userAccount });
             truffleAssert.eventEmitted(tx, 'TaskPending', (ev) => {
                 return ev.creator == userAccount;
             });
         }
 
-        await truffleAssert.reverts(
-            taskInstance.createTask(0, taskHash, dataHash, 8, taskFee, 1,  { from: userAccount }),
-            "Task queue is full",
-            "Create task not fail"
-        );
+        const tx = await taskInstance.createTask(0, taskHash, dataHash, 8, new BN(toWei("40", "ether")), 1,  { from: userAccount });
+        truffleAssert.eventEmitted(tx, 'TaskPending', (ev) => {
+            return ev.creator == userAccount;
+        });
+        truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
+            return ev.taskId.toString() == "1";
+        });
+
     })
 })

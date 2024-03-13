@@ -60,7 +60,7 @@ contract("Task", (accounts) => {
 
         assert.equal(
             userBalanceAfter.toString(),
-            userBalance.add(new BN(toWei("30", "ether"))).toString(),
+            userBalance.add(new BN(toWei("42", "ether"))).toString(),
             "Task fee not returned"
         )
 

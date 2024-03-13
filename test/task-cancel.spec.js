@@ -38,12 +38,6 @@ contract("Task", (accounts) => {
             assert.match(e.toString(), /Unauthorized to cancel task/, "Wrong reason: " + e.toString());
         }
 
-        try {
-            await taskInstance.cancelTask(taskId, { from: accounts[1] });
-        } catch (e) {
-            assert.match(e.toString(), /Task has not exceeded the deadline yet/, "Wrong reason: " + e.toString());
-        }
-
         await web3Send({ jsonrpc: "2.0", method: "evm_increaseTime", params: [15 * 60 + 1], id: 123 });
         await web3Send({ jsonrpc: "2.0", method: "evm_mine", params: [], id: 0 });
         const tx = await taskInstance.cancelTask(taskId, { from: accounts[1] });
@@ -60,6 +54,70 @@ contract("Task", (accounts) => {
         }
     });
 });
+
+contract("Task", (accounts) => {
+    it("should cancel successfully before task deadline", async () => {
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+
+        await prepareNetwork(accounts, cnxInstance, nodeInstance);
+        await prepareUser(accounts[1], cnxInstance, taskInstance);
+
+        const creatorBalance = await cnxInstance.balanceOf(accounts[1]);
+        const nodeBalances = [];
+        for (let i = 2; i <= 4; i++) {
+            const balance = await cnxInstance.balanceOf(accounts[i]);
+            nodeBalances.push(balance);
+        }
+        const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
+
+
+        const tx = await taskInstance.cancelTask(taskId, { from: accounts[1] });
+        truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
+            return ev.taskId.toString() === taskId.toString();
+        });
+
+        const afterCreatorBalance = await cnxInstance.balanceOf(accounts[1]);
+        assert.equal(creatorBalance.toString(), afterCreatorBalance.toString());
+
+        for (let i = 2; i <= 4; i++) {
+            const balance = await cnxInstance.balanceOf(accounts[i]);
+            assert.equal(nodeBalances[i - 2].toString(), balance.toString());
+        }
+    });
+});
+
+contract("Task", (accounts) => {
+    it("should cancel successfully when task is in task queue", async () => {
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+
+        await prepareUser(accounts[1], cnxInstance, taskInstance);
+
+        const creatorBalance = await cnxInstance.balanceOf(accounts[1]);
+        let tx = await taskInstance.createTask(
+            0,
+            web3.utils.soliditySha3("task hash"),
+            web3.utils.soliditySha3("data hash"),
+            0,
+            new BN("30", "ether"),
+            1,
+            {from: accounts[1]}
+        );
+    
+        const taskId = tx.logs[0].args.taskId;
+
+        tx = await taskInstance.cancelTask(taskId, { from: accounts[1] });
+        truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
+            return ev.taskId.toString() === taskId.toString();
+        });
+
+        const afterCreatorBalance = await cnxInstance.balanceOf(accounts[1]);
+        assert.equal(creatorBalance.toString(), afterCreatorBalance.toString());
+    });
+});
+
 
 contract("Task", (accounts) => {
     it("should cancel successfully after two nodes disclose", async () => {

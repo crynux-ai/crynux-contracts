@@ -8,11 +8,11 @@ import "./TaskHeap.sol";
 
 contract TaskQueue is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
-    using TaskHeap_impl for TaskHeap;
+    using TaskMaxHeap_impl for TaskMaxHeap;
+    using TaskMinHeap_impl for TaskMinHeap;
 
     address private taskContractAddress;
 
-    uint private count;
     uint private sizeLimit;
 
     // store task vrams for sd task type and gpt task type
@@ -20,8 +20,11 @@ contract TaskQueue is Ownable {
     EnumerableSet.UintSet private gptTaskVrams;
 
     // store tasks in heap grouped by vrams 
-    mapping(uint => TaskHeap) private sdTaskHeaps;
-    mapping(uint => TaskHeap) private gptTaskHeaps;
+    mapping(uint => TaskMaxHeap) private sdTaskHeaps;
+    mapping(uint => TaskMaxHeap) private gptTaskHeaps;
+
+    // store all tasks in min heap, useful for removing the cheapest task when the task queue is full
+    TaskMinHeap private taskHeap;
 
     constructor() {
         sizeLimit = 50;
@@ -33,6 +36,18 @@ contract TaskQueue is Ownable {
 
     function updateSizeLimit(uint limit) public onlyOwner {
         sizeLimit = limit;
+    }
+
+    function size() public view returns (uint) {
+        return taskHeap.size();
+    }
+
+    function getSizeLimit() public view returns (uint) {
+        return sizeLimit;
+    }
+
+    function include(uint taskId) public view returns (bool) {
+        return taskHeap.include(taskId);
     }
 
     function pushTask(
@@ -47,7 +62,7 @@ contract TaskQueue is Ownable {
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskType == 0 || taskType == 1, "Invalid task type");
-        require(count < sizeLimit, "Task queue is full");
+        require(taskHeap.size() < sizeLimit, "Task queue is full");
 
         TaskInQueue memory task = TaskInQueue({
             id: taskId,
@@ -67,11 +82,11 @@ contract TaskQueue is Ownable {
             gptTaskVrams.add(vramLimit);
             gptTaskHeaps[vramLimit].insert(task);
         }
-        count++;
+        taskHeap.insert(task);
     }
 
     function popTask(bool sameGPU, uint vramLimit) public returns (TaskInQueue memory) {
-        require(count > 0, "No available task");
+        require(taskHeap.size() > 0, "No available task");
 
         bool isGPT = false;
         uint resultVram = 0;
@@ -107,25 +122,61 @@ contract TaskQueue is Ownable {
 
         TaskInQueue memory result;
         if (isGPT) {
-            result = gptTaskHeaps[resultVram].top();
-            gptTaskHeaps[resultVram].pop();
+            result = gptTaskHeaps[resultVram].pop();
             if (gptTaskHeaps[resultVram].size() == 0) {
                 delete gptTaskHeaps[resultVram];
                 gptTaskVrams.remove(resultVram);
             }
         } else {
-            result = sdTaskHeaps[resultVram].top();
-            sdTaskHeaps[resultVram].pop();
+            result = sdTaskHeaps[resultVram].pop();
             if (sdTaskHeaps[resultVram].size() == 0) {
                 delete sdTaskHeaps[resultVram];
                 sdTaskVrams.remove(resultVram);
             }
         }
-        count--;
+        taskHeap.remove(result.id);
         return result;
     }
 
-    function size() public view returns (uint) {
-        return count;
+    function removeTask(uint taskId) public returns (TaskInQueue memory) {
+        require(taskHeap.include(taskId), "Task is not in queue");
+
+        TaskInQueue memory task = taskHeap.remove(taskId);
+        if (task.taskType == 0) {
+            sdTaskHeaps[task.vramLimit].remove(taskId);
+            if (sdTaskHeaps[task.vramLimit].size() == 0) {
+                delete sdTaskHeaps[task.vramLimit];
+                sdTaskVrams.remove(task.vramLimit);
+            }
+        } else {
+            gptTaskHeaps[task.vramLimit].remove(taskId);
+            if (gptTaskHeaps[task.vramLimit].size() == 0) {
+                delete gptTaskHeaps[task.vramLimit];
+                gptTaskVrams.remove(task.vramLimit);
+            }
+        }
+
+        return task;
+    }
+
+    function removeCheapestTask() public returns (TaskInQueue memory) {
+        require(taskHeap.size() > 0, "No available task");
+
+        TaskInQueue memory task = taskHeap.pop();
+        if (task.taskType == 0) {
+            sdTaskHeaps[task.vramLimit].remove(task.id);
+            if (sdTaskHeaps[task.vramLimit].size() == 0) {
+                delete sdTaskHeaps[task.vramLimit];
+                sdTaskVrams.remove(task.vramLimit);
+            }
+        } else {
+            gptTaskHeaps[task.vramLimit].remove(task.id);
+            if (gptTaskHeaps[task.vramLimit].size() == 0) {
+                delete gptTaskHeaps[task.vramLimit];
+                gptTaskVrams.remove(task.vramLimit);
+            }
+        }
+
+        return task;
     }
 }
