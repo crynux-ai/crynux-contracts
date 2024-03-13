@@ -169,6 +169,10 @@ contract Task is Ownable {
         } catch Error(string memory reason) {
             string memory target = "No available node";
             if (keccak256(bytes(reason)) == keccak256(bytes(target))) {
+                if (taskQueue.size() == taskQueue.getSizeLimit()) {
+                    TaskInQueue memory task = taskQueue.removeCheapestTask();
+                    emit TaskAborted(task.id, "Task fee is too low");
+                }
                 emit TaskPending(
                     taskInfo.id,
                     taskType,
@@ -276,6 +280,7 @@ contract Task is Ownable {
                 taskInfo.id = task.id;
                 taskInfo.taskType = task.taskType;
                 taskInfo.creator = task.creator;
+                taskInfo.timeout = block.timestamp + timeout;
                 taskInfo.taskHash = task.taskHash;
                 taskInfo.dataHash = task.dataHash;
                 taskInfo.vramLimit = task.vramLimit;
@@ -468,44 +473,56 @@ contract Task is Ownable {
     }
 
     function cancelTask(uint256 taskId) public {
-        require(tasks[taskId].id != 0, "Task not exist");
-        bool callerValid = false;
-        if (msg.sender == tasks[taskId].creator) {
-            callerValid = true;
-        } else {
-            for (uint i = 0; i < 3; i++) {
-                if (tasks[taskId].selectedNodes[i] == msg.sender) {
-                    callerValid = true;
-                    break;
+        if (tasks[taskId].id != 0) {
+            // task is executing
+            bool callerValid = false;
+            if (msg.sender == tasks[taskId].creator) {
+                callerValid = true;
+            } else {
+                for (uint i = 0; i < 3; i++) {
+                    if (tasks[taskId].selectedNodes[i] == msg.sender) {
+                        callerValid = true;
+                        break;
+                    }
                 }
             }
-        }
-        require(callerValid, "Unauthorized to cancel task");
-        require(
-            block.timestamp > tasks[taskId].timeout,
-            "Task has not exceeded the deadline yet"
-        );
-        // return unuses task fee to task creator
-        if (tasks[taskId].balance > 0) {
+            require(callerValid, "Unauthorized to cancel task");
             require(
-                cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
+                msg.sender == tasks[taskId].creator || block.timestamp > tasks[taskId].timeout,
+                "Task has not exceeded the deadline yet"
+            );
+            // return unuses task fee to task creator
+            if (tasks[taskId].balance > 0) {
+                require(
+                    cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
+                    "Token transfer failed"
+                );
+                tasks[taskId].balance = 0;
+            }
+
+            if (!tasks[taskId].aborted) {
+                emit TaskAborted(taskId, "Task Cancelled");
+            }
+            // free unfinished nodes and delete the task
+            for (uint i = 0; i < 3; i++) {
+                address nodeAddress = tasks[taskId].selectedNodes[i];
+                if (nodeTasks[nodeAddress] != 0) {
+                    nodeTasks[nodeAddress] = 0;
+                    node.finishTask(nodeAddress);
+                }
+            }
+            delete tasks[taskId];
+        } else if (taskQueue.include(taskId)) {
+            // task hasn't been executed
+            TaskInQueue memory task = taskQueue.removeTask(taskId);
+            require(
+                cnxToken.transfer(task.creator, task.taskFee),
                 "Token transfer failed"
             );
-            tasks[taskId].balance = 0;
-        }
-
-        if (!tasks[taskId].aborted) {
             emit TaskAborted(taskId, "Task Cancelled");
+        } else {
+            revert("Task not exist");
         }
-        // free unfinished nodes and delete the task
-        for (uint i = 0; i < 3; i++) {
-            address nodeAddress = tasks[taskId].selectedNodes[i];
-            if (nodeTasks[nodeAddress] != 0) {
-                nodeTasks[nodeAddress] = 0;
-                node.finishTask(nodeAddress);
-            }
-        }
-        delete tasks[taskId];
     }
 
     function checkTaskResult(uint256 taskId) internal {
