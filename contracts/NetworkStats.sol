@@ -8,6 +8,7 @@ contract NetworkStats is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     struct NodeInfo {
+        address nodeAddress;
         string GPUModel;
         uint VRAM;
     }
@@ -87,6 +88,7 @@ contract NetworkStats is Ownable {
         }
 
         _nodesMap[nodeAddress] = NodeInfo(
+            nodeAddress,
             gpuModel,
             vRAM
         );
