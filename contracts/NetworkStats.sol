@@ -60,7 +60,7 @@ contract NetworkStats {
         return nodes;
     }
 
-    function nodeJoined(address nodeAddress, string calldata gpuModel, uint vRAM) internal {
+    function nodeJoined(address nodeAddress, string calldata gpuModel, uint vRAM) public {
 
         _activeNodes++;
         _availableNodes++;
@@ -76,40 +76,40 @@ contract NetworkStats {
         );
     }
 
-    function nodeQuit() internal {
+    function nodeQuit() public {
         _activeNodes--;
         _availableNodes--;
     }
 
-    function nodePaused() internal {
+    function nodePaused() public {
         _availableNodes--;
     }
 
-    function nodeResumed() internal {
+    function nodeResumed() public {
         _availableNodes++;
     }
 
-    function nodeTaskStarted() internal {
+    function nodeTaskStarted() public {
         _availableNodes--;
         _busyNodes++;
     }
 
-    function nodeTaskFinished() internal {
+    function nodeTaskFinished() public {
         _availableNodes++;
         _busyNodes--;
     }
 
-    function taskQueued() internal {
+    function taskQueued() public {
         _totalTasks++;
         _queuedTasks++;
     }
 
-    function taskStarted() internal {
+    function taskStarted() public {
         _queuedTasks--;
         _runningTasks++;
     }
 
-    function taskFinished() internal {
+    function taskFinished() public {
         _runningTasks--;
     }
 }
