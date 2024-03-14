@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract NetworkStats {
+contract NetworkStats is Ownable {
 
     using EnumerableSet for EnumerableSet.AddressSet;
 
     struct NodeInfo {
+        address nodeAddress;
         string GPUModel;
         uint VRAM;
     }
@@ -22,6 +24,17 @@ contract NetworkStats {
     uint256 private _totalTasks = 0;
     uint256 private _runningTasks = 0;
     uint256 private _queuedTasks = 0;
+
+    address private nodeContractAddress;
+    address private taskContractAddress;
+
+    function updateNodeContractAddress(address nodeContract) public onlyOwner {
+        nodeContractAddress = nodeContract;
+    }
+
+    function updateTaskContractAddress(address taskContract) public onlyOwner {
+        taskContractAddress = taskContract;
+    }
 
     function totalNodes() public view returns (uint) {
         return _totalNodes;
@@ -60,7 +73,11 @@ contract NetworkStats {
         return nodes;
     }
 
-    function nodeJoined(address nodeAddress, string calldata gpuModel, uint vRAM) internal {
+    function nodeJoined(address nodeAddress, string calldata gpuModel, uint vRAM) public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
 
         _activeNodes++;
         _availableNodes++;
@@ -71,45 +88,86 @@ contract NetworkStats {
         }
 
         _nodesMap[nodeAddress] = NodeInfo(
+            nodeAddress,
             gpuModel,
             vRAM
         );
     }
 
-    function nodeQuit() internal {
+    function nodeQuit() public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
         _activeNodes--;
         _availableNodes--;
     }
 
-    function nodePaused() internal {
+    function nodePaused() public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
         _availableNodes--;
     }
 
-    function nodeResumed() internal {
+    function nodeResumed() public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
         _availableNodes++;
     }
 
-    function nodeTaskStarted() internal {
+    function nodeTaskStarted() public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
         _availableNodes--;
         _busyNodes++;
     }
 
-    function nodeTaskFinished() internal {
+    function nodeTaskFinished() public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
         _availableNodes++;
         _busyNodes--;
     }
 
-    function taskQueued() internal {
+    function taskQueued() public {
+        require(
+            msg.sender == taskContractAddress,
+            "Not called by the task contract"
+        );
+
         _totalTasks++;
         _queuedTasks++;
     }
 
-    function taskStarted() internal {
+    function taskStarted() public {
+        require(
+            msg.sender == taskContractAddress,
+            "Not called by the task contract"
+        );
+
         _queuedTasks--;
         _runningTasks++;
     }
 
-    function taskFinished() internal {
+    function taskFinished() public {
+        require(
+            msg.sender == taskContractAddress,
+            "Not called by the task contract"
+        );
+
         _runningTasks--;
     }
 }

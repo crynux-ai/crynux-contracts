@@ -29,5 +29,8 @@ module.exports = async function (deployer) {
     await qosInstance.updateNodeContractAddress(nodeInstance.address);
     await qosInstance.updateTaskContractAddress(taskInstance.address);
 
+    await netStatsInstance.updateNodeContractAddress(nodeInstance.address);
+    await netStatsInstance.updateTaskContractAddress(taskInstance.address);
+
     await taskQueueInstance.updateTaskContractAddress(taskInstance.address);
 };
