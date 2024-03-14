@@ -1,5 +1,6 @@
 const Node = artifacts.require("Node");
 const CrynuxToken = artifacts.require("CrynuxToken");
+const NetworkStats = artifacts.require("NetworkStats");
 const { toWei, BN } = web3.utils;
 const crypto = require("crypto");
 
@@ -14,6 +15,7 @@ contract("Node", (accounts) => {
 
         const nodeInstance = await Node.deployed();
         const cnxInstance = await CrynuxToken.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         try {
             await nodeInstance.join(gpuName, gpuVram, { from: nodeAccount });
@@ -41,7 +43,7 @@ contract("Node", (accounts) => {
         status = await nodeInstance.getNodeStatus(nodeAccount);
         assert.equal(status.toNumber(), 1, "Node join failed.");
 
-        const totalNodes = await nodeInstance.totalNodes();
+        const totalNodes = await netStatsInstance.totalNodes();
         assert.equal(totalNodes.toNumber(), 1, "Wrong number of nodes");
 
         const balance = await cnxInstance.balanceOf(nodeAccount);
@@ -64,7 +66,7 @@ contract("Node", (accounts) => {
         status = await nodeInstance.getNodeStatus(nodeAccount);
         assert.equal(status.toNumber(), 0, "Node quit failed.")
 
-        const totalNodesRet = await nodeInstance.totalNodes();
+        const totalNodesRet = await netStatsInstance.activeNodes();
         assert.equal(totalNodesRet.toNumber(), 0, "Wrong number of nodes");
 
         const restGpus = await nodeInstance.getAvailableGPUs();
@@ -90,13 +92,14 @@ contract("Node", (accounts) => {
 
         const nodeInstance = await Node.deployed();
         const cnxInstance = await CrynuxToken.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         await cnxInstance.transfer(nodeAccount, new BN(toWei("400", "ether")));
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), { from: nodeAccount });
 
         await nodeInstance.join(gpuName, gpuVram, { from: nodeAccount });
 
-        let totalNodes = await nodeInstance.totalNodes();
+        let totalNodes = await netStatsInstance.totalNodes();
         assert.equal(totalNodes.toNumber(), 1, "Wrong number of nodes");
 
         let availableNodes = await nodeInstance.getAvailableNodes();
@@ -119,7 +122,7 @@ contract("Node", (accounts) => {
         availableGPUs = await nodeInstance.getAvailableGPUs();
         assert.equal(availableGPUs.length, 0, "Wrong gpu number");
 
-        totalNodes = await nodeInstance.totalNodes();
+        totalNodes = await netStatsInstance.totalNodes();
         assert.equal(totalNodes.toNumber(), 1, "Wrong number of nodes");
 
         await nodeInstance.resume({ from: nodeAccount });
@@ -132,7 +135,7 @@ contract("Node", (accounts) => {
         availableGPUs = await nodeInstance.getAvailableGPUs();
         assert.equal(availableGPUs.length, 1, "Wrong gpu number");
 
-        totalNodes = await nodeInstance.totalNodes();
+        totalNodes = await netStatsInstance.totalNodes();
         assert.equal(totalNodes.toNumber(), 1, "Wrong number of nodes");
 
         await nodeInstance.quit({ from: nodeAccount });
@@ -152,6 +155,7 @@ contract("Node", (accounts) => {
 
         const nodeInstance = await Node.deployed();
         const cnxInstance = await CrynuxToken.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         for (let i = 0; i < 6; i++) {
             const nodeAddress = accounts[i + 1];
@@ -162,7 +166,7 @@ contract("Node", (accounts) => {
             await nodeInstance.join(gpuNames[i], gpuVrams[i], { from: nodeAddress });
         }
 
-        const totalNodes = await nodeInstance.totalNodes();
+        const totalNodes = await netStatsInstance.totalNodes();
         assert.equal(totalNodes, 6, "Wrong number of total nodes");
 
         const availableNodes = await nodeInstance.getAvailableNodes();
