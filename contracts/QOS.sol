@@ -42,7 +42,7 @@ contract QOS is Ownable {
     function startTask(address nodeAddress) public {
         require(
             msg.sender == nodeContractAddress,
-            "Not called by the task contract"
+            "Not called by the node contract"
         );
 
         nodeTaskCount[nodeAddress]++;
@@ -56,7 +56,7 @@ contract QOS is Ownable {
     function finishTask(address nodeAddress) public {
         require(
             msg.sender == nodeContractAddress,
-            "Not called by the task contract"
+            "Not called by the node contract"
         );
 
         // add current node task score to total node task score
