@@ -52,7 +52,7 @@ contract NetworkStats {
     }
 
     function getAllNodeInfo(uint offset, uint length) public view returns (NodeInfo[] memory) {
-        NodeInfo[] nodes = new NodeInfo[](length);
+        NodeInfo[] memory nodes = new NodeInfo[](length);
         for(uint i=0; i<length; i++) {
             nodes[i] = _nodesMap[_allNodes.at(offset + i)];
         }

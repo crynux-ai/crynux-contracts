@@ -9,6 +9,7 @@ import "./Hamming.sol";
 import "./Random.sol";
 import "./QOS.sol";
 import "./TaskQueue.sol";
+import "./NetworkStats.sol";
 
 contract Task is Ownable {
     using Random for Random.Generator;
@@ -41,6 +42,7 @@ contract Task is Ownable {
     QOS private qos;
     IERC20 private cnxToken;
     TaskQueue private taskQueue;
+    NetworkStats private netStats;
 
     mapping(uint => TaskInfo) private tasks;
     mapping(address => uint256) private nodeTasks;
@@ -78,12 +80,14 @@ contract Task is Ownable {
         Node nodeInstance,
         IERC20 tokenInstance,
         QOS qosInstance,
-        TaskQueue taskQueueInstance
+        TaskQueue taskQueueInstance,
+        NetworkStats netStatsInstance
     ) {
         node = nodeInstance;
         cnxToken = tokenInstance;
         qos = qosInstance;
         taskQueue = taskQueueInstance;
+        netStats = netStatsInstance;
         nextTaskId = 1;
         distanceThreshold = 5;
         timeout = 15 minutes;
@@ -152,6 +156,7 @@ contract Task is Ownable {
                 taskHash,
                 dataHash
             );
+            netStats.taskQueued();
             tasks[taskInfo.id] = taskInfo;
             for (uint i = 0; i < 3; i++) {
                 address nodeAddress = nodeAddresses[i];
@@ -167,6 +172,7 @@ contract Task is Ownable {
                     i
                 );
             }
+            netStats.taskStarted();
         } catch Error(string memory reason) {
             string memory target = "No available node";
             if (keccak256(bytes(reason)) == keccak256(bytes(target))) {
@@ -181,6 +187,7 @@ contract Task is Ownable {
                     taskHash,
                     dataHash
                 );
+                netStats.taskQueued();
                 taskQueue.pushTask(
                     taskInfo.id,
                     taskType,
@@ -310,6 +317,7 @@ contract Task is Ownable {
                         i
                     );
                 }
+                netStats.taskStarted();
             } catch Error(string memory reason) {
                 string memory target = "No available task";
                 if (keccak256(bytes(reason)) != keccak256(bytes(target))) {
@@ -429,6 +437,7 @@ contract Task is Ownable {
             }
         }
         delete tasks[taskId];
+        netStats.taskFinished();
     }
 
     function reportResultsUploaded(uint256 taskId, uint round) public {
@@ -523,6 +532,7 @@ contract Task is Ownable {
                 }
             }
             delete tasks[taskId];
+            netStats.taskFinished();
         } else if (taskQueue.include(taskId)) {
             // task hasn't been executed
             TaskInQueue memory task = taskQueue.removeTask(taskId);
