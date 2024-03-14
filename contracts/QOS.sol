@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract QOS is Ownable {
     // task score reward for first, second and third submissions
-    uint[3] private TASK_SCORE_REWARDS = [10, 7, 4];
+    uint[3] private TASK_SCORE_REWARDS = [10, 9, 6];
 
     uint constant private TASK_SCORE_POOL_SIZE = 3;
 

@@ -27,6 +27,7 @@ contract Task is Ownable {
         address[] selectedNodes;
         bytes32[] commitments;
         bytes32[] nonces;
+        uint[] commitmentSubmitRounds;
         bytes[] results;
         uint[] resultDisclosedRounds;
         address resultNode;
@@ -345,15 +346,9 @@ contract Task is Ownable {
             "Nonce already used"
         );
 
-        uint index = 0;
-        for (uint i = 0; i < 3; i++) {
-            if (tasks[taskId].commitments[i] != 0) {
-                index++;
-            }
-        }
-        qos.addTaskScore(msg.sender, index);
         tasks[taskId].commitments[round] = commitment;
         tasks[taskId].nonces[round] = nonce;
+        tasks[taskId].commitmentSubmitRounds.push(round);
 
         if (isCommitmentReady(taskId)) {
             emit TaskResultCommitmentsReady(taskId);
@@ -404,6 +399,16 @@ contract Task is Ownable {
             "Mismatch result and commitment"
         );
 
+        // add task score for submit commitment
+        uint submitIndex = 0;
+        for (uint i = 0; i < 3; i++) {
+            if (tasks[taskId].commitmentSubmitRounds[i] == round) {
+                submitIndex = i;
+                break;
+            }
+        }
+        qos.addTaskScore(msg.sender, submitIndex);
+
         tasks[taskId].results[round] = result;
         qos.addTaskScore(
             msg.sender,
@@ -449,15 +454,10 @@ contract Task is Ownable {
         );
         require(tasks[taskId].commitments[round] == 0, "Already submitted");
 
-        uint index = 0;
-        for (uint i = 0; i < 3; i++) {
-            if (tasks[taskId].commitments[i] != 0) {
-                index++;
-            }
-        }
-        qos.addTaskScore(msg.sender, index);
+        qos.addTaskScore(msg.sender, tasks[taskId].commitmentSubmitRounds.length);
         uint256 errCommitment = 1;
         tasks[taskId].commitments[round] = bytes32(errCommitment); // Set to a non-zero value to enter result committed state
+        tasks[taskId].commitmentSubmitRounds.push(round);
 
         qos.addTaskScore(
             msg.sender,
@@ -498,6 +498,17 @@ contract Task is Ownable {
                     "Token transfer failed"
                 );
                 tasks[taskId].balance = 0;
+            }
+
+            // compensate task score for normal nodes when the task is blocked by other nodes
+            if (tasks[taskId].commitmentSubmitRounds.length < 3) {
+                for (uint i = 0; i < tasks[taskId].commitmentSubmitRounds.length; i++) {
+                    uint round = tasks[taskId].commitmentSubmitRounds[i];
+                    address nodeAddress = tasks[taskId].selectedNodes[round];
+                    // add task score for submit commitment and disclose task
+                    qos.addTaskScore(nodeAddress, i);
+                    qos.addTaskScore(nodeAddress, i);
+                }
             }
 
             if (!tasks[taskId].aborted) {
