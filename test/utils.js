@@ -31,7 +31,7 @@ const prepareTask = async (accounts, cnxTokenInstance, nodeInstance, taskInstanc
     // Create the task.
 
     const balBefore = await cnxTokenInstance.balanceOf(accounts[1]);
-    const taskFee = new BN(toWei("42", "ether"));
+    const taskFee = new BN(toWei("50", "ether"));
 
     const tx = await taskInstance.createTask(
         taskType,

@@ -20,7 +20,7 @@ contract("Task", (accounts) => {
         const dataHash = web3.utils.soliditySha3("data hash");
         const vramLimit = 0;
 
-        const taskFee = new BN(toWei("42", "ether"));
+        const taskFee = new BN(toWei("50", "ether"));
         const cap = 1;
 
         try {
