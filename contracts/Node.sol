@@ -2,10 +2,11 @@
 pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./QOS.sol";
+import "./NetworkStats.sol";
+
 
 abstract contract TaskWithCallback {
     function nodeAvailableCallback(address root) external virtual;
@@ -29,6 +30,7 @@ contract Node is Ownable {
 
     IERC20 private cnxToken;
     QOS private qos;
+    NetworkStats private netStats;
 
     struct GPUInfo {
         string name;
@@ -42,8 +44,8 @@ contract Node is Ownable {
         uint score;
     }
 
-    event Slash(address nodeAddress);
-    event KickOut(address nodeAddress);
+    event NodeSlashed(address nodeAddress);
+    event NodeKickedOut(address nodeAddress);
 
     // store all nodes info
     EnumerableSet.AddressSet private allNodes;
@@ -61,27 +63,16 @@ contract Node is Ownable {
 
     address private taskContractAddress;
 
-    constructor(IERC20 tokenInstance, QOS qosInstance) {
+    constructor(IERC20 tokenInstance, QOS qosInstance, NetworkStats netStatsInstance) {
         cnxToken = tokenInstance;
         qos = qosInstance;
+        netStats = netStatsInstance;
     }
 
     function getNodeInfo(
         address nodeAddress
     ) public view returns (NodeInfo memory) {
         return nodesMap[nodeAddress];
-    }
-
-    function totalNodes() public view returns (uint) {
-        return allNodes.length();
-    }
-
-    function availableNodes() public view returns (uint) {
-        return _availableNodes.length();
-    }
-
-    function getAllNodeAddresses() public view returns (address[] memory) {
-        return allNodes.values();
     }
 
     function getAvailableGPUs() public view returns (GPUInfo[] memory) {
@@ -185,7 +176,7 @@ contract Node is Ownable {
         // add nodes to nodesMap
         bytes32 gpuID = keccak256(abi.encodePacked(gpuName, gpuVram));
         uint score = qos.getTaskScore(msg.sender);
-        // set score 0 to 1 to avoid error occurs in multinomial function of node selection 
+        // set score 0 to 1 to avoid error occurs in multinomial function of node selection
         if (score == 0) {
             score += 1;
         }
@@ -198,6 +189,7 @@ contract Node is Ownable {
         allNodes.add(msg.sender);
 
         markNodeAvailable(msg.sender);
+        netStats.nodeJoined(msg.sender, gpuName, gpuVram);
     }
 
     function quit() public {
@@ -219,6 +211,9 @@ contract Node is Ownable {
                 cnxToken.transfer(msg.sender, requiredStakeAmount),
                 "Token transfer failed"
             );
+
+            netStats.nodeQuit();
+
         } else if (nodeStatus == NODE_STATUS_BUSY) {
             setNodeStatus(msg.sender, NODE_STATUS_PENDING_QUIT);
         } else {
@@ -232,6 +227,7 @@ contract Node is Ownable {
         if (nodeStatus == NODE_STATUS_AVAILABLE) {
             setNodeStatus(msg.sender, NODE_STATUS_PAUSED);
             markNodeUnavailable(msg.sender);
+            netStats.nodePaused();
         } else if (nodeStatus == NODE_STATUS_BUSY) {
             setNodeStatus(msg.sender, NODE_STATUS_PENDING_PAUSE);
         } else {
@@ -246,6 +242,7 @@ contract Node is Ownable {
         );
         setNodeStatus(msg.sender, NODE_STATUS_AVAILABLE);
         markNodeAvailable(msg.sender);
+        netStats.nodeResumed();
     }
 
     function slash(address nodeAddress) public {
@@ -271,7 +268,8 @@ contract Node is Ownable {
         qos.finishTask(nodeAddress);
         // Remove the node from the list
         removeNode(nodeAddress);
-        emit Slash(nodeAddress);
+        netStats.nodeQuit();
+        emit NodeSlashed(nodeAddress);
     }
 
     function startTask(address nodeAddress) public {
@@ -286,6 +284,7 @@ contract Node is Ownable {
         markNodeUnavailable(nodeAddress);
         setNodeStatus(nodeAddress, NODE_STATUS_BUSY);
         qos.startTask(nodeAddress);
+        netStats.nodeTaskStarted();
     }
 
     function finishTask(address nodeAddress) public {
@@ -303,18 +302,21 @@ contract Node is Ownable {
         );
 
         qos.finishTask(nodeAddress);
+        netStats.nodeTaskFinished();
+
         if (qos.shouldKickOut(nodeAddress)) {
             removeNode(nodeAddress);
             require(
                 cnxToken.transfer(nodeAddress, requiredStakeAmount),
                 "Token transfer failed"
             );
-            emit KickOut(nodeAddress);
+            emit NodeKickedOut(nodeAddress);
+            netStats.nodeQuit();
             return;
         }
         // update node qos score
         uint score = qos.getTaskScore(nodeAddress);
-        // set score 0 to 1 to avoid error occurs in multinomial function of node selection 
+        // set score 0 to 1 to avoid error occurs in multinomial function of node selection
         if (score == 0) {
             score += 1;
         }
@@ -332,8 +334,12 @@ contract Node is Ownable {
                 cnxToken.transfer(nodeAddress, requiredStakeAmount),
                 "Token transfer failed"
             );
+
+            netStats.nodeQuit();
+
         } else if (nodeStatus == NODE_STATUS_PENDING_PAUSE) {
             setNodeStatus(nodeAddress, NODE_STATUS_PAUSED);
+            netStats.nodePaused();
         }
     }
 
@@ -404,7 +410,7 @@ contract Node is Ownable {
         address[] memory res = new address[](k);
         // root node must be included in result
         res[0] = root;
-        
+
         if (k == 1) {
             return res;
         }
