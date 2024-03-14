@@ -86,6 +86,7 @@ contract TaskQueue is Ownable {
     }
 
     function popTask(bool sameGPU, uint vramLimit) public returns (TaskInQueue memory) {
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskHeap.size() > 0, "No available task");
 
         bool isGPT = false;
@@ -139,6 +140,7 @@ contract TaskQueue is Ownable {
     }
 
     function removeTask(uint taskId) public returns (TaskInQueue memory) {
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskHeap.include(taskId), "Task is not in queue");
 
         TaskInQueue memory task = taskHeap.remove(taskId);
@@ -160,6 +162,7 @@ contract TaskQueue is Ownable {
     }
 
     function removeCheapestTask() public returns (TaskInQueue memory) {
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskHeap.size() > 0, "No available task");
 
         TaskInQueue memory task = taskHeap.pop();
