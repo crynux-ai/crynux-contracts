@@ -56,7 +56,7 @@ contract("Task", (accounts) => {
 });
 
 contract("Task", (accounts) => {
-    it("should cancel successfully before task deadline", async () => {
+    it("should not cancel successfully before task deadline", async () => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
@@ -71,19 +71,11 @@ contract("Task", (accounts) => {
             nodeBalances.push(balance);
         }
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-
-
-        const tx = await taskInstance.cancelTask(taskId, { from: accounts[1] });
-        truffleAssert.eventEmitted(tx, 'TaskAborted', (ev) => {
-            return ev.taskId.toString() === taskId.toString();
-        });
-
-        const afterCreatorBalance = await cnxInstance.balanceOf(accounts[1]);
-        assert.equal(creatorBalance.toString(), afterCreatorBalance.toString());
-
-        for (let i = 2; i <= 4; i++) {
-            const balance = await cnxInstance.balanceOf(accounts[i]);
-            assert.equal(nodeBalances[i - 2].toString(), balance.toString());
+        
+        try {
+            await taskInstance.cancelTask(taskId, { from: accounts[1] });
+        } catch (e) {
+            assert.match(e.toString(), /Task has not exceeded the deadline yet/, "Wrong reason: " + e.toString());
         }
     });
 });

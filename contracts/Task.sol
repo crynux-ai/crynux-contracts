@@ -488,7 +488,7 @@ contract Task is Ownable {
             }
             require(callerValid, "Unauthorized to cancel task");
             require(
-                msg.sender == tasks[taskId].creator || block.timestamp > tasks[taskId].timeout,
+                block.timestamp > tasks[taskId].timeout,
                 "Task has not exceeded the deadline yet"
             );
             // return unuses task fee to task creator
