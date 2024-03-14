@@ -423,7 +423,7 @@ contract("Task", (accounts) => {
         assert.equal(nodeStatus.toNumber(), 1, "wrong node status");
 
         const nodeBal = await cnxInstance.balanceOf(accounts[4]);
-        assert.equal(nodeBal.toString(), "8000000000000000000", "wrong node balance");
+        assert.equal(nodeBal.toString(), "12000000000000000000", "wrong node balance");
 
         const task = await taskInstance.getTask(taskId);
         assert.equal(task.id, 0, "task not deleted");

@@ -51,10 +51,10 @@ contract("Task normal QOS score", (accounts) => {
         assert.equal(score.toNumber(), 20);
 
         score = await qosInstance.getTaskScore(accounts[3]);
-        assert.equal(score.toNumber(), 14);
+        assert.equal(score.toNumber(), 18);
 
         score = await qosInstance.getTaskScore(accounts[4]);
-        assert.equal(score.toNumber(), 8);
+        assert.equal(score.toNumber(), 12);
     })
 })
 
@@ -116,7 +116,7 @@ contract("Task slash qos score", (accounts) => {
         assert.equal(score.toNumber(), 20);
 
         score = await qosInstance.getTaskScore(accounts[3]);
-        assert.equal(score.toNumber(), 14);
+        assert.equal(score.toNumber(), 18);
 
         score = await qosInstance.getTaskScore(accounts[4]);
         assert.equal(score.toNumber(), 0);
@@ -153,10 +153,10 @@ contract("Task report error qos score", (accounts) => {
         assert.equal(score.toNumber(), 20);
 
         score = await qosInstance.getTaskScore(accounts[3]);
-        assert.equal(score.toNumber(), 14);
+        assert.equal(score.toNumber(), 18);
 
         score = await qosInstance.getTaskScore(accounts[4]);
-        assert.equal(score.toNumber(), 8);
+        assert.equal(score.toNumber(), 12);
 
         for (let i = 0; i < 3; i++) {
             let status = await nodeInstance.getNodeStatus(accounts[2 + i]);
