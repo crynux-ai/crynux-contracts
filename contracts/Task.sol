@@ -432,7 +432,7 @@ contract Task is Ownable {
         require(tasks[taskId].id != 0, "Task not exist");
 
         for (uint i = 0; i < 3; i++) {
-            if (nodeTasks[tasks[taskId].selectedNodes[i]] != 0) {
+            if (nodeTasks[tasks[taskId].selectedNodes[i]] == taskId) {
                 return;
             }
         }
