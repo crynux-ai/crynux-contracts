@@ -1,6 +1,7 @@
 const Node = artifacts.require("Node");
 const CrynuxToken = artifacts.require("CrynuxToken");
 const Task = artifacts.require("Task");
+const NetworkStats = artifacts.require("NetworkStats");
 const truffleAssert = require('truffle-assertions');
 const { BN, toWei } = web3.utils;
 
@@ -15,6 +16,7 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         await prepareNetwork(accounts, cnxInstance, nodeInstance);
         await prepareUser(accounts[1], cnxInstance, taskInstance);
@@ -130,7 +132,7 @@ contract("Task", (accounts) => {
             "Task fee not received"
         )
 
-        const availableNodes = await nodeInstance.availableNodes();
+        const availableNodes = await netStatsInstance.availableNodes();
         assert.equal(availableNodes, 0, "Wrong number of available nodes");
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
@@ -159,7 +161,7 @@ contract("Task", (accounts) => {
             "Task fee not received"
         );
 
-        const availableNodesAfter = await nodeInstance.availableNodes();
+        const availableNodesAfter = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfter, 1, "Node 4 not free");
 
         const node4Status = await nodeInstance.getNodeStatus(accounts[4]);
@@ -178,13 +180,14 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         await nodeInstance.resume({from: accounts[2]});
 
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[3]});
         await nodeInstance.join(gpuName, gpuVram, {from: accounts[3]});
 
-        const availableNodesStart = await nodeInstance.availableNodes();
+        const availableNodesStart = await netStatsInstance.availableNodes();
         assert.equal(availableNodesStart, 3, "Wrong number of available nodes");
 
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
@@ -235,7 +238,7 @@ contract("Task", (accounts) => {
             return ev.taskId.eq(taskId);
         });
 
-        const availableNodesAfter = await nodeInstance.availableNodes();
+        const availableNodesAfter = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfter, 1, "Node 3 not free");
 
         const nodeTaskId = await taskInstance.getNodeTask(accounts[3]);
@@ -251,14 +254,14 @@ contract("Task", (accounts) => {
             {from: accounts[4]}
         );
 
-        const availableNodesAfterSlash = await nodeInstance.availableNodes();
+        const availableNodesAfterSlash = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfterSlash, 1, "Node not slashed");
 
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        const availableNodesAfterSuccess = await nodeInstance.availableNodes();
+        const availableNodesAfterSuccess = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node not slashed");
 
         taskInfo = await taskInstance.getTask(taskId);
@@ -302,6 +305,7 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         await cnxInstance.transfer(accounts[4], new BN(toWei("400", "ether")));
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[4]})
@@ -361,14 +365,14 @@ contract("Task", (accounts) => {
             return ev.taskId.eq(taskId);
         });
 
-        const availableNodesAfter = await nodeInstance.availableNodes();
+        const availableNodesAfter = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfter, 1, "Node free");
 
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[3]], {from: accounts[3]});
-        const availableNodesAfterSuccess = await nodeInstance.availableNodes();
+        const availableNodesAfterSuccess = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node free");
 
         taskInfo = await taskInstance.getTask(taskId);
@@ -412,6 +416,7 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         await cnxInstance.transfer(accounts[2], new BN(toWei("400", "ether")));
         await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), {from: accounts[2]})
@@ -483,14 +488,14 @@ contract("Task", (accounts) => {
             return ev.taskId.eq(taskId);
         });
 
-        const availableNodesAfter = await nodeInstance.availableNodes();
+        const availableNodesAfter = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfter, 1, "Node free");
 
         let taskInfo = await taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        const availableNodesAfterSuccess = await nodeInstance.availableNodes();
+        const availableNodesAfterSuccess = await netStatsInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node free");
 
         taskInfo = await taskInstance.getTask(taskId);

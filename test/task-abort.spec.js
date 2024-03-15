@@ -1,6 +1,7 @@
 const Node = artifacts.require("Node");
 const CrynuxToken = artifacts.require("CrynuxToken");
 const Task = artifacts.require("Task");
+const NetworkStats = artifacts.require("NetworkStats");
 const truffleAssert = require('truffle-assertions');
 const { BN, toWei } = web3.utils;
 
@@ -11,6 +12,7 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         await prepareNetwork(accounts, cnxInstance, nodeInstance);
         await prepareUser(accounts[1], cnxInstance, taskInstance);
@@ -53,7 +55,7 @@ contract("Task", (accounts) => {
             return ev.taskId.toString() === taskId.toString();
         });
 
-        const availableNodes = await nodeInstance.availableNodes();
+        const availableNodes = await netStatsInstance.availableNodes();
         assert.equal(availableNodes, 3, "Nodes not free");
 
         const userBalanceAfter = await cnxInstance.balanceOf(accounts[1]);

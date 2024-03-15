@@ -1,6 +1,7 @@
 const Node = artifacts.require("Node");
 const CrynuxToken = artifacts.require("CrynuxToken");
 const Task = artifacts.require("Task");
+const NetworkStats = artifacts.require("NetworkStats");
 
 const truffleAssert = require('truffle-assertions');
 
@@ -14,6 +15,7 @@ contract("Task", (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
+        const netStatsInstance = await NetworkStats.deployed();
 
         const taskType = 0;
         const taskHash = web3.utils.soliditySha3("task hash");
@@ -55,7 +57,7 @@ contract("Task", (accounts) => {
             return ev.selectedNode === accounts[4] && ev.taskType == taskType;
         });
 
-        const availableNodes = await nodeInstance.availableNodes();
+        const availableNodes = await netStatsInstance.availableNodes();
         assert.equal(availableNodes.toNumber(), 0, "Wrong number of available nodes");
 
         await nodeInstance.quit({from: accounts[2]});

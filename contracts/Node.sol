@@ -115,6 +115,8 @@ contract Node is Ownable {
         // add node to available nodes set
         _availableNodes.add(nodeAddress);
 
+        netStats.nodeAvailable();
+
         TaskWithCallback(taskContractAddress).nodeAvailableCallback(nodeAddress);
     }
 
@@ -137,11 +139,14 @@ contract Node is Ownable {
 
         // remove node from available nodes set
         _availableNodes.remove(nodeAddress);
+
+        netStats.nodeUnavailable();
     }
 
     function removeNode(address nodeAddress) private {
         delete nodesMap[nodeAddress];
         allNodes.remove(nodeAddress);
+        netStats.nodeQuit();
     }
 
     function join(string calldata gpuName, uint gpuVram) public {
@@ -211,9 +216,6 @@ contract Node is Ownable {
                 cnxToken.transfer(msg.sender, requiredStakeAmount),
                 "Token transfer failed"
             );
-
-            netStats.nodeQuit();
-
         } else if (nodeStatus == NODE_STATUS_BUSY) {
             setNodeStatus(msg.sender, NODE_STATUS_PENDING_QUIT);
         } else {
@@ -227,7 +229,6 @@ contract Node is Ownable {
         if (nodeStatus == NODE_STATUS_AVAILABLE) {
             setNodeStatus(msg.sender, NODE_STATUS_PAUSED);
             markNodeUnavailable(msg.sender);
-            netStats.nodePaused();
         } else if (nodeStatus == NODE_STATUS_BUSY) {
             setNodeStatus(msg.sender, NODE_STATUS_PENDING_PAUSE);
         } else {
@@ -242,7 +243,6 @@ contract Node is Ownable {
         );
         setNodeStatus(msg.sender, NODE_STATUS_AVAILABLE);
         markNodeAvailable(msg.sender);
-        netStats.nodeResumed();
     }
 
     function slash(address nodeAddress) public {
@@ -268,7 +268,6 @@ contract Node is Ownable {
         qos.finishTask(nodeAddress);
         // Remove the node from the list
         removeNode(nodeAddress);
-        netStats.nodeQuit();
         emit NodeSlashed(nodeAddress);
     }
 
@@ -311,7 +310,6 @@ contract Node is Ownable {
                 "Token transfer failed"
             );
             emit NodeKickedOut(nodeAddress);
-            netStats.nodeQuit();
             return;
         }
         // update node qos score
@@ -334,12 +332,8 @@ contract Node is Ownable {
                 cnxToken.transfer(nodeAddress, requiredStakeAmount),
                 "Token transfer failed"
             );
-
-            netStats.nodeQuit();
-
         } else if (nodeStatus == NODE_STATUS_PENDING_PAUSE) {
             setNodeStatus(nodeAddress, NODE_STATUS_PAUSED);
-            netStats.nodePaused();
         }
     }
 

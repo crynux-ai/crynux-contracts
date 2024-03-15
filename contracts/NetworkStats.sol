@@ -80,7 +80,6 @@ contract NetworkStats is Ownable {
         );
 
         _activeNodes++;
-        _availableNodes++;
 
         if(!_allNodes.contains(nodeAddress)) {
             _allNodes.add(nodeAddress);
@@ -101,19 +100,9 @@ contract NetworkStats is Ownable {
         );
 
         _activeNodes--;
-        _availableNodes--;
     }
 
-    function nodePaused() public {
-        require(
-            msg.sender == nodeContractAddress,
-            "Not called by the node contract"
-        );
-
-        _availableNodes--;
-    }
-
-    function nodeResumed() public {
+    function nodeAvailable() public {
         require(
             msg.sender == nodeContractAddress,
             "Not called by the node contract"
@@ -122,13 +111,21 @@ contract NetworkStats is Ownable {
         _availableNodes++;
     }
 
-    function nodeTaskStarted() public {
+    function nodeUnavailable() public {
         require(
             msg.sender == nodeContractAddress,
             "Not called by the node contract"
         );
 
         _availableNodes--;
+    }
+
+    function nodeTaskStarted() public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
         _busyNodes++;
     }
 
@@ -138,7 +135,6 @@ contract NetworkStats is Ownable {
             "Not called by the node contract"
         );
 
-        _availableNodes++;
         _busyNodes--;
     }
 
