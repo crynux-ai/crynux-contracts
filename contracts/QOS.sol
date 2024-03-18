@@ -20,6 +20,7 @@ contract QOS is Ownable {
     // the pool size is TASK_SCORE_POOL_SIZE
     // the first position of pool is the current node task score
     mapping(address => uint[TASK_SCORE_POOL_SIZE]) private nodeTaskScorePool;
+    mapping(address => uint) private nodeTaskPoolSize;
 
     uint private kickoutThreshold;
 
@@ -46,6 +47,7 @@ contract QOS is Ownable {
         );
 
         nodeTaskCount[nodeAddress]++;
+        nodeTaskPoolSize[nodeAddress]++;
         // right shift the nodeTaskScorePool
         for (uint i = TASK_SCORE_POOL_SIZE - 1; i > 0; i--) {
             nodeTaskScorePool[nodeAddress][i] = nodeTaskScorePool[nodeAddress][i - 1];
@@ -86,21 +88,43 @@ contract QOS is Ownable {
         nodeTaskScorePool[nodeAddress][0] = 0;
     }
 
+    function kickout(address nodeAddress) public {
+        require(
+            msg.sender == nodeContractAddress,
+            "Not called by the node contract"
+        );
+
+        // clear node task score pool
+        nodeTaskPoolSize[nodeAddress] = 0;
+    }
+
     function getTaskScore(address nodeAddress) public view returns (uint) {
         if (nodeTaskCount[nodeAddress] == 0) {
-            return 14;
+            return TASK_SCORE_REWARDS[0] * 2;
         } else {
             return nodeTaskScore[nodeAddress] / nodeTaskCount[nodeAddress];
         }
     }
 
+    function getTaskCount(address nodeAddress) public view returns (uint) {
+        return nodeTaskCount[nodeAddress];
+    }
+
     function getRecentTaskScore(address nodeAddress) public view returns (uint) {
         uint totalScore = 0;
-        for (uint i = 0; i < TASK_SCORE_POOL_SIZE; i++) {
+        uint taskCount = nodeTaskPoolSize[nodeAddress];
+        if (taskCount > TASK_SCORE_POOL_SIZE) {
+            taskCount = TASK_SCORE_POOL_SIZE;
+        }
+        for (uint i = 0; i < taskCount; i++) {
             totalScore += nodeTaskScorePool[nodeAddress][i];
         }
 
         return totalScore;
+    }
+
+    function getRecentTaskCount(address nodeAddress) public view returns (uint) {
+        return nodeTaskPoolSize[nodeAddress];
     }
 
     function getCurrentTaskScore(address nodeAddress) public view returns (uint) {
@@ -108,14 +132,10 @@ contract QOS is Ownable {
     }
 
     function shouldKickOut(address nodeAddress) public view returns (bool) {
-        uint totalScore = 0;
-        uint taskCount = nodeTaskCount[nodeAddress];
+        uint totalScore = getRecentTaskScore(nodeAddress);
+        uint taskCount = nodeTaskPoolSize[nodeAddress];
         if (taskCount < TASK_SCORE_POOL_SIZE) {
             totalScore += (TASK_SCORE_POOL_SIZE - taskCount) * TASK_SCORE_REWARDS[0] * 2;
-        }
-
-        for (uint i = 0; i < TASK_SCORE_POOL_SIZE; i++) {
-            totalScore += nodeTaskScorePool[nodeAddress][i];
         }
 
         return totalScore <= kickoutThreshold;
