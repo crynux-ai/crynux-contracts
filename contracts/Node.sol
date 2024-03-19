@@ -44,8 +44,7 @@ contract Node is Ownable {
         uint score;
     }
 
-    event Node
-    ed(address nodeAddress);
+    event NodeSlashed(address nodeAddress);
     event NodeKickedOut(address nodeAddress);
 
     // store all nodes info
