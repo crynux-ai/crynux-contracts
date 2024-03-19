@@ -509,8 +509,16 @@ contract Task is Ownable {
                 tasks[taskId].balance = 0;
             }
 
-            // compensate task score for normal nodes when the task is blocked by other nodes
-            if (tasks[taskId].commitmentSubmitRounds.length < 3) {
+            if (tasks[taskId].commitmentSubmitRounds.length == 0) {
+                // compensate task score when three nodes are all timeout and not submit commitments
+                for (uint i = 0; i < 3; i++) {
+                    address nodeAddress = tasks[taskId].selectedNodes[i];
+                    // add task score for submit commitment and disclose task
+                    qos.addTaskScore(nodeAddress, i);
+                    qos.addTaskScore(nodeAddress, i);
+                }
+            } else if (tasks[taskId].commitmentSubmitRounds.length < 3) {
+                // compensate task score for normal nodes when the task is blocked by other nodes
                 for (uint i = 0; i < tasks[taskId].commitmentSubmitRounds.length; i++) {
                     uint round = tasks[taskId].commitmentSubmitRounds[i];
                     address nodeAddress = tasks[taskId].selectedNodes[round];

@@ -120,7 +120,7 @@ contract("Task slash qos score", (accounts) => {
 
         score = await qosInstance.getTaskScore(accounts[4]);
         assert.equal(score.toNumber(), 0);
-        
+
         for (let i = 0; i < 2; i++) {
             let status = await nodeInstance.getNodeStatus(accounts[2 + i]);
             assert.equal(status.toNumber(), 1)
@@ -176,9 +176,9 @@ contract("Node kick out", (accounts) => {
         // task 1
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-        
+
             const result = "0x0102030405060708";
-    
+
             for (let i = 0; i < 2; i++) {
                 const [commitment, nonce] = getCommitment(result);
                 await taskInstance.submitTaskResultCommitment(
@@ -195,9 +195,9 @@ contract("Node kick out", (accounts) => {
         // task 2
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-    
+
             const result = "0x0102030405060708";
-    
+
             for (let i = 0; i < 2; i++) {
                 const [commitment, nonce] = getCommitment(result);
                 await taskInstance.submitTaskResultCommitment(
@@ -218,6 +218,46 @@ contract("Node kick out", (accounts) => {
         assert.equal(status.toNumber(), 1);
         status = await nodeInstance.getNodeStatus(accounts[2]);
         assert.equal(status.toNumber(), 1);
+    })
+
+    it("test the kicked out node can join the network and execute task without being kicked out again", async () => {
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+
+        await prepareNode(accounts[4], cnxInstance, nodeInstance);
+
+        const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
+
+        const result = "0x0102030405060708";
+
+        for (let i = 0; i < 3; i++) {
+            const [commitment, nonce] = getCommitment(result);
+            await taskInstance.submitTaskResultCommitment(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                commitment,
+                nonce,
+                { from: accounts[2 + i] });
+        }
+        for (let i = 0; i < 3; i++) {
+            await taskInstance.discloseTaskResult(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                result,
+                { from: accounts[2 + i] },
+            );
+        }
+        await taskInstance.reportResultsUploaded(
+            taskId,
+            nodeRounds[accounts[2]],
+            { from: accounts[2] },
+        );
+
+        for (let i = 0; i < 3; i++) {
+            const status = await nodeInstance.getNodeStatus(accounts[2 + i]);
+            assert.equal(status.toNumber(), 1);
+        }
     })
 })
 
@@ -232,12 +272,12 @@ contract("Node kick out", (accounts) => {
         // task 1
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-    
+
             for (let i = 0; i < 3; i++) {
                 await taskInstance.reportTaskError(
                     taskId,
                     nodeRounds[accounts[2 + i]],
-                    { from: accounts[2 + i] }    
+                    { from: accounts[2 + i] }
                 );
             }
         }
@@ -246,9 +286,9 @@ contract("Node kick out", (accounts) => {
         // task 2
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-        
+
             const result = "0x0102030405060708";
-    
+
             for (let i = 0; i < 2; i++) {
                 const [commitment, nonce] = getCommitment(result);
                 await taskInstance.submitTaskResultCommitment(
@@ -265,9 +305,9 @@ contract("Node kick out", (accounts) => {
         // task 3
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-    
+
             const result = "0x0102030405060708";
-    
+
             for (let i = 0; i < 2; i++) {
                 const [commitment, nonce] = getCommitment(result);
                 await taskInstance.submitTaskResultCommitment(
@@ -289,6 +329,47 @@ contract("Node kick out", (accounts) => {
         status = await nodeInstance.getNodeStatus(accounts[2]);
         assert.equal(status.toNumber(), 1);
     })
+
+    it("test the kicked out node can join the network and execute task without being kicked out again", async () => {
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+
+        await prepareNode(accounts[4], cnxInstance, nodeInstance);
+
+        const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
+
+        const result = "0x0102030405060708";
+
+        for (let i = 0; i < 3; i++) {
+            const [commitment, nonce] = getCommitment(result);
+            await taskInstance.submitTaskResultCommitment(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                commitment,
+                nonce,
+                { from: accounts[2 + i] });
+        }
+        for (let i = 0; i < 3; i++) {
+            await taskInstance.discloseTaskResult(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                result,
+                { from: accounts[2 + i] },
+            );
+        }
+        await taskInstance.reportResultsUploaded(
+            taskId,
+            nodeRounds[accounts[2]],
+            { from: accounts[2] },
+        );
+
+        for (let i = 0; i < 3; i++) {
+            const status = await nodeInstance.getNodeStatus(accounts[2 + i]);
+            assert.equal(status.toNumber(), 1);
+        }
+
+    })
 })
 
 contract("Node kick out", (accounts) => {
@@ -302,9 +383,9 @@ contract("Node kick out", (accounts) => {
         // task 1
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-        
+
             const result = "0x0102030405060708";
-    
+
             for (let i = 0; i < 2; i++) {
                 const [commitment, nonce] = getCommitment(result);
                 await taskInstance.submitTaskResultCommitment(
@@ -321,12 +402,12 @@ contract("Node kick out", (accounts) => {
         // task 2
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-    
+
             for (let i = 0; i < 3; i++) {
                 await taskInstance.reportTaskError(
                     taskId,
                     nodeRounds[accounts[2 + i]],
-                    { from: accounts[2 + i] }    
+                    { from: accounts[2 + i] }
                 );
             }
         }
@@ -335,9 +416,9 @@ contract("Node kick out", (accounts) => {
         await prepareUser(accounts[1], cnxInstance, taskInstance);
         {
             const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-    
+
             const result = "0x0102030405060708";
-    
+
             for (let i = 0; i < 2; i++) {
                 const [commitment, nonce] = getCommitment(result);
                 await taskInstance.submitTaskResultCommitment(
@@ -358,5 +439,72 @@ contract("Node kick out", (accounts) => {
         assert.equal(status.toNumber(), 1);
         status = await nodeInstance.getNodeStatus(accounts[2]);
         assert.equal(status.toNumber(), 1);
+    })
+
+    it("test the kicked out node can join the network and execute task without being kicked out again", async () => {
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+
+        await prepareNode(accounts[4], cnxInstance, nodeInstance);
+
+        const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
+
+        const result = "0x0102030405060708";
+
+        for (let i = 0; i < 3; i++) {
+            const [commitment, nonce] = getCommitment(result);
+            await taskInstance.submitTaskResultCommitment(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                commitment,
+                nonce,
+                { from: accounts[2 + i] });
+        }
+        for (let i = 0; i < 3; i++) {
+            await taskInstance.discloseTaskResult(
+                taskId,
+                nodeRounds[accounts[2 + i]],
+                result,
+                { from: accounts[2 + i] },
+            );
+        }
+        await taskInstance.reportResultsUploaded(
+            taskId,
+            nodeRounds[accounts[2]],
+            { from: accounts[2] },
+        );
+
+        for (let i = 0; i < 3; i++) {
+            const status = await nodeInstance.getNodeStatus(accounts[2 + i]);
+            assert.equal(status.toNumber(), 1);
+        }
+
+    })
+})
+
+contract("Node timeout", (accounts) => {
+    it("test node qos score when all nodes timeout in a task", async () => {
+        const taskInstance = await Task.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+        const nodeInstance = await Node.deployed();
+        const qosInstance = await QOS.deployed();
+
+        await prepareNetwork(accounts, cnxInstance, nodeInstance);
+        await prepareUser(accounts[1], cnxInstance, taskInstance);
+
+        const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
+
+        await time.increase(time.duration.hours(1));
+        await taskInstance.cancelTask(taskId, { from: accounts[4] });
+
+        const scores = [20, 18, 12]
+
+        for (let i = 0; i < 3; i++) {
+            const account = accounts[2 + i];
+            const round = nodeRounds[account];
+            const score = (await qosInstance.getTaskScore(account)).toNumber();
+            assert.equal(score, scores[round], `Wrong task score ${round}`);
+        }
     })
 })

@@ -266,6 +266,7 @@ contract Node is Ownable {
         );
 
         qos.finishTask(nodeAddress);
+        qos.kickout(nodeAddress);
         // Remove the node from the list
         removeNode(nodeAddress);
         emit NodeSlashed(nodeAddress);
@@ -304,6 +305,7 @@ contract Node is Ownable {
         netStats.nodeTaskFinished();
 
         if (qos.shouldKickOut(nodeAddress)) {
+            qos.kickout(nodeAddress);
             removeNode(nodeAddress);
             require(
                 cnxToken.transfer(nodeAddress, requiredStakeAmount),
