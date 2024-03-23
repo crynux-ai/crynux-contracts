@@ -6,13 +6,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./Node.sol";
 import "./Hamming.sol";
-import "./Random.sol";
 import "./QOS.sol";
 import "./TaskQueue.sol";
 import "./NetworkStats.sol";
 
 contract Task is Ownable {
-    using Random for Random.Generator;
 
     uint private TASK_TYPE_SD = 0;
     uint private TASK_TYPE_LLM = 1;
@@ -54,8 +52,6 @@ contract Task is Ownable {
     uint256 private numSuccessTasks;
     uint256 private numAbortedTasks;
 
-    Random.Generator private generator;
-
     event TaskPending(
         uint256 taskId,
         uint256 taskType,
@@ -93,6 +89,7 @@ contract Task is Ownable {
         qos = qosInstance;
         taskQueue = taskQueueInstance;
         netStats = netStatsInstance;
+
         nextTaskId = 1;
         distanceThreshold = 5;
         timeout = 15 minutes;
@@ -147,7 +144,7 @@ contract Task is Ownable {
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
         );
         try
-            this.randomSelectNodes(
+            node.randomSelectNodes(
                 3,
                 vramLimit,
                 taskType == TASK_TYPE_LLM,
@@ -210,53 +207,6 @@ contract Task is Ownable {
                 revert(reason);
             }
         }
-    }
-
-    function randomSelectNodes(
-        uint k,
-        uint vramLimit,
-        bool useSameGPU,
-        bytes32 seed
-    ) external returns (address[] memory) {
-        require(k > 0, "select nodes count cannot be zero");
-
-        generator.manualSeed(seed);
-        address nodeAddress;
-        address[] memory res = new address[](k);
-
-        if (useSameGPU) {
-            (bytes32[] memory gpuIDs, uint[] memory idScores) = node
-                .filterGPUID(vramLimit, k);
-            uint index = generator.multinomial(idScores, 0, idScores.length);
-            bytes32 gpuID = gpuIDs[index];
-            for (uint i = 0; i < k; i++) {
-                (address[] memory nodes, uint[] memory scores) = node
-                    .filterNodesByGPUID(gpuID);
-                uint j = generator.multinomial(scores, 0, nodes.length);
-                nodeAddress = nodes[j];
-                node.startTask(nodeAddress);
-                res[i] = nodeAddress;
-            }
-        } else {
-            for (uint i = 0; i < k; i++) {
-                (bytes32[] memory gpuIDs, uint[] memory idScores) = node
-                    .filterGPUID(vramLimit, 1);
-                uint index = generator.multinomial(
-                    idScores,
-                    0,
-                    idScores.length
-                );
-                bytes32 gpuID = gpuIDs[index];
-                (address[] memory nodes, uint[] memory scores) = node
-                    .filterNodesByGPUID(gpuID);
-                uint j = generator.multinomial(scores, 0, nodes.length);
-                nodeAddress = nodes[j];
-                node.startTask(nodeAddress);
-                res[i] = nodeAddress;
-            }
-        }
-
-        return res;
     }
 
     function nodeAvailableCallback(address root) external {
@@ -678,7 +628,7 @@ contract Task is Ownable {
         bytes memory resultB = tasks[taskId].results[roundB];
 
         if (taskType == TASK_TYPE_SD) {
-            return compareHamming(resultA, resultB, distanceThreshold);
+            return Hamming.compareHamming(resultA, resultB, distanceThreshold);
         } else if (taskType == TASK_TYPE_LLM) {
             return keccak256(resultA) == keccak256(resultB);
         } else {
@@ -744,23 +694,6 @@ contract Task is Ownable {
             taskId,
             tasks[taskId].resultDisclosedRounds[discloseIndex]
         );
-    }
-
-    function compareHamming(
-        bytes memory a,
-        bytes memory b,
-        uint threshold
-    ) internal pure returns (bool) {
-        if (a.length == b.length && a.length % 8 == 0) {
-            for (uint start = 0; start < a.length; start += 8) {
-                uint distance = Hamming.hamming(a, b, start, start + 8);
-                if (distance >= threshold) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
     }
 
     function updateDistanceThreshold(uint threshold) public onlyOwner {
