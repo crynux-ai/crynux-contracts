@@ -350,7 +350,7 @@ contract Node is Ownable {
     function filterGPUID(
         uint vramLimit,
         uint countLimit
-    ) public view returns (bytes32[] memory, uint[] memory) {
+    ) private view returns (bytes32[] memory, uint[] memory) {
         uint[] memory scores = new uint[](_availableGPUIDSet.length());
         bytes32[] memory ids = new bytes32[](_availableGPUIDSet.length());
         uint validCount = 0;
@@ -383,7 +383,7 @@ contract Node is Ownable {
         return (ids, scores);
     }
 
-    function filterNodesByGPUID(bytes32 gpuID) public view returns (address[] memory, uint[] memory) {
+    function filterNodesByGPUID(bytes32 gpuID) private view returns (address[] memory, uint[] memory) {
         uint length = _gpuIDNodesIndex[gpuID].length();
         require(length > 0, "No available node");
 
@@ -445,7 +445,7 @@ contract Node is Ownable {
     function selectNodesWithRoot(
         address root,
         uint k
-    ) public view returns (address[] memory) {
+    ) external view returns (address[] memory) {
         require(k > 0, "select nodes count cannot be zero");
         require(_availableNodes.length() >= k, "No available node");
         require(_availableNodes.contains(root), "root node should be available");
