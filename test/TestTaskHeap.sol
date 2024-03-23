@@ -41,11 +41,11 @@ contract TestTaskHeap {
         }
         Assert.isFalse(maxHeap.include(7), "Wrong include");
 
-        TaskInQueue memory task;
-        task = maxHeap.remove(3);
-        Assert.equal(task.taskFee, 300, "Wrong remove task");
-        task = maxHeap.remove(4);
-        Assert.equal(task.taskFee, 400, "Wrong remove task");
+        TaskInQueue memory task1;
+        task1 = maxHeap.remove(3);
+        Assert.equal(task1.taskFee, 300, "Wrong remove task");
+        task1 = maxHeap.remove(4);
+        Assert.equal(task1.taskFee, 400, "Wrong remove task");
         
         Assert.isFalse(maxHeap.include(3), "Wrong include");
         Assert.isFalse(maxHeap.include(4), "Wrong include");
@@ -55,10 +55,10 @@ contract TestTaskHeap {
             maxHeap.pop();
         }
 
-        task = maxHeap.remove(1);
-        Assert.equal(task.taskFee, 100, "Wrong remove task");
-        task = maxHeap.remove(2);
-        Assert.equal(task.taskFee, 200, "Wrong remove task");
+        task1 = maxHeap.remove(1);
+        Assert.equal(task1.taskFee, 100, "Wrong remove task");
+        task1 = maxHeap.remove(2);
+        Assert.equal(task1.taskFee, 200, "Wrong remove task");
 
     }
 
@@ -92,11 +92,11 @@ contract TestTaskHeap {
         }
         Assert.isFalse(minHeap.include(7), "Wrong include");
 
-        TaskInQueue memory task;
-        task = minHeap.remove(3);
-        Assert.equal(task.taskFee, 400, "Wrong remove task");
-        task = minHeap.remove(4);
-        Assert.equal(task.taskFee, 300, "Wrong remove task");
+        TaskInQueue memory task1;
+        task1 = minHeap.remove(3);
+        Assert.equal(task1.taskFee, 400, "Wrong remove task");
+        task1 = minHeap.remove(4);
+        Assert.equal(task1.taskFee, 300, "Wrong remove task");
         
         Assert.isFalse(minHeap.include(3), "Wrong include");
         Assert.isFalse(minHeap.include(4), "Wrong include");
@@ -106,9 +106,9 @@ contract TestTaskHeap {
             minHeap.pop();
         }
 
-        task = minHeap.remove(1);
-        Assert.equal(task.taskFee, 600, "Wrong remove task");
-        task = minHeap.remove(2);
-        Assert.equal(task.taskFee, 500, "Wrong remove task");
+        task1 = minHeap.remove(1);
+        Assert.equal(task1.taskFee, 600, "Wrong remove task");
+        task1 = minHeap.remove(2);
+        Assert.equal(task1.taskFee, 500, "Wrong remove task");
     }
 }

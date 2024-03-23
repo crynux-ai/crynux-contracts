@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./QOS.sol";
+import "./Random.sol";
 import "./NetworkStats.sol";
 
 
@@ -16,6 +17,7 @@ contract Node is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
+    using Random for Random.Generator;
 
     uint256 private maxNodesAllowed = 100000;
     uint256 private requiredStakeAmount = 400 * 10 ** 18;
@@ -62,6 +64,8 @@ contract Node is Ownable {
     mapping(bytes32 => uint) private _gpuIDGroupScores;
 
     address private taskContractAddress;
+
+    Random.Generator private generator;
 
     constructor(IERC20 tokenInstance, QOS qosInstance, NetworkStats netStatsInstance) {
         cnxToken = tokenInstance;
@@ -346,7 +350,7 @@ contract Node is Ownable {
     function filterGPUID(
         uint vramLimit,
         uint countLimit
-    ) public view returns (bytes32[] memory, uint[] memory) {
+    ) private view returns (bytes32[] memory, uint[] memory) {
         uint[] memory scores = new uint[](_availableGPUIDSet.length());
         bytes32[] memory ids = new bytes32[](_availableGPUIDSet.length());
         uint validCount = 0;
@@ -379,7 +383,7 @@ contract Node is Ownable {
         return (ids, scores);
     }
 
-    function filterNodesByGPUID(bytes32 gpuID) public view returns (address[] memory, uint[] memory) {
+    function filterNodesByGPUID(bytes32 gpuID) private view returns (address[] memory, uint[] memory) {
         uint length = _gpuIDNodesIndex[gpuID].length();
         require(length > 0, "No available node");
 
@@ -395,10 +399,53 @@ contract Node is Ownable {
         return (nodes, scores);
     }
 
+    function randomSelectNodes(
+        uint k,
+        uint vramLimit,
+        bool useSameGPU,
+        bytes32 seed
+    ) external returns (address[] memory) {
+        require(k > 0, "select nodes count cannot be zero");
+
+        generator.manualSeed(seed);
+        address nodeAddress;
+        address[] memory res = new address[](k);
+
+        if (useSameGPU) {
+            (bytes32[] memory gpuIDs, uint[] memory idScores) = filterGPUID(vramLimit, k);
+            uint index = generator.multinomial(idScores, 0, idScores.length);
+            bytes32 gpuID = gpuIDs[index];
+            for (uint i = 0; i < k; i++) {
+                (address[] memory nodes, uint[] memory scores) = filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
+                startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        } else {
+            for (uint i = 0; i < k; i++) {
+                (bytes32[] memory gpuIDs, uint[] memory idScores) = filterGPUID(vramLimit, 1);
+                uint index = generator.multinomial(
+                    idScores,
+                    0,
+                    idScores.length
+                );
+                bytes32 gpuID = gpuIDs[index];
+                (address[] memory nodes, uint[] memory scores) = filterNodesByGPUID(gpuID);
+                uint j = generator.multinomial(scores, 0, nodes.length);
+                nodeAddress = nodes[j];
+                startTask(nodeAddress);
+                res[i] = nodeAddress;
+            }
+        }
+
+        return res;
+    }
+
     function selectNodesWithRoot(
         address root,
         uint k
-    ) public view returns (address[] memory) {
+    ) external view returns (address[] memory) {
         require(k > 0, "select nodes count cannot be zero");
         require(_availableNodes.length() >= k, "No available node");
         require(_availableNodes.contains(root), "root node should be available");
