@@ -178,6 +178,9 @@ contract Task is Ownable {
             if (keccak256(bytes(reason)) == keccak256(bytes(target))) {
                 if (taskQueue.size() == taskQueue.getSizeLimit()) {
                     TaskInQueue memory task = taskQueue.removeCheapestTask();
+                    // stats task count in netstats
+                    netStats.taskStarted();
+                    netStats.taskFinished();
                     emit TaskAborted(task.id, "Task fee is too low");
                 }
                 emit TaskPending(
@@ -548,6 +551,9 @@ contract Task is Ownable {
                 cnxToken.transfer(task.creator, task.taskFee),
                 "Token transfer failed"
             );
+            // stats task count in netstats
+            netStats.taskStarted();
+            netStats.taskFinished();
             emit TaskAborted(taskId, "Task Cancelled");
         } else {
             revert("Task not exist");
