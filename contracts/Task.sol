@@ -75,6 +75,7 @@ contract Task is Ownable {
     event TaskResultCommitmentsReady(uint256 indexed taskId);
     event TaskSuccess(uint256 indexed taskId, bytes result, address indexed resultNode);
     event TaskAborted(uint256 indexed taskId, string reason);
+    event TaskResultUploaded(uint256 indexed taskId);
 
     constructor(
         Node nodeInstance,
@@ -455,6 +456,7 @@ contract Task is Ownable {
 
         settleNodeByRound(taskId, round);
         tryDeleteTask(taskId);
+        emit TaskResultUploaded(taskId);
     }
 
     function reportTaskError(uint256 taskId, uint round) public {
