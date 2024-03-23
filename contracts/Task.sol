@@ -77,6 +77,10 @@ contract Task is Ownable {
     event TaskAborted(uint256 indexed taskId, string reason);
     event TaskResultUploaded(uint256 indexed taskId);
 
+    event TaskNodeSuccess(uint indexed taskId, address nodeAddress, uint fee);
+    event TaskNodeSlashed(uint indexed taskId, address nodeAddress);
+    event TaskNodeCancelled(uint indexed taskId, address nodeAddress);
+
     constructor(
         Node nodeInstance,
         IERC20 tokenInstance,
@@ -542,6 +546,7 @@ contract Task is Ownable {
                 if (nodeTasks[nodeAddress] != 0) {
                     nodeTasks[nodeAddress] = 0;
                     node.finishTask(nodeAddress);
+                    emit TaskNodeCancelled(taskId, nodeAddress);
                 }
             }
             delete tasks[taskId];
@@ -652,6 +657,7 @@ contract Task is Ownable {
             address nodeAddress = tasks[taskId].selectedNodes[round];
             nodeTasks[nodeAddress] = 0;
             node.finishTask(nodeAddress);
+            emit TaskNodeCancelled(taskId, nodeAddress);
         }
 
         numAbortedTasks++;
@@ -694,6 +700,7 @@ contract Task is Ownable {
         // Free the node
         nodeTasks[nodeAddress] = 0;
         node.finishTask(nodeAddress);
+        emit TaskNodeSuccess(taskId, nodeAddress, fee);
     }
 
     function settleNodeByDiscloseIndex(
@@ -726,6 +733,7 @@ contract Task is Ownable {
         // Free the node
         nodeTasks[nodeAddress] = 0;
         node.slash(nodeAddress);
+        emit TaskNodeSlashed(taskId, nodeAddress);
     }
 
     function punishNodeByDiscloseIndex(
