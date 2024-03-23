@@ -72,9 +72,9 @@ contract Task is Ownable {
         bytes32 dataHash,
         uint round
     );
-    event TaskResultCommitmentsReady(uint256 taskId);
-    event TaskSuccess(uint256 taskId, bytes result, address indexed resultNode);
-    event TaskAborted(uint256 taskId, string reason);
+    event TaskResultCommitmentsReady(uint256 indexed taskId);
+    event TaskSuccess(uint256 indexed taskId, bytes result, address indexed resultNode);
+    event TaskAborted(uint256 indexed taskId, string reason);
 
     constructor(
         Node nodeInstance,
