@@ -148,7 +148,7 @@ contract("Node", (accounts) => {
             "NVIDIA GeForce GTX 1070 Ti",
             "NVIDIA GeForce GTX 1070 Ti",
             "NVIDIA GeForce RTX 4060",
-            "NVIDIA GeForce GTX 4060",
+            "Apple M1 Pro",
             "NVIDIA GeForce GTX 4090"
         ];
         const gpuVrams = [8, 8, 8, 8, 16, 24];
@@ -256,5 +256,39 @@ contract("Node", async (accounts) => {
         assert.include(nodes, accounts[3], "Wrong selected nodes");
         assert.include(nodes, accounts[4], "Wrong selected nodes");
 
+    })
+})
+
+contract("Node", async (accounts) => {
+    it("select apple nodes with root", async () => {
+        const gpuNames = [
+            "Apple M1",
+            "Apple M2 Max",
+            "NVIDIA GeForce GTX 4060",
+            "NVIDIA GeForce GTX 4060",
+        ];
+        const gpuVrams = [8, 64, 16, 16];
+
+        const nodeInstance = await Node.deployed();
+        const cnxInstance = await CrynuxToken.deployed();
+
+        for (let i = 0; i < 4; i++) {
+            const nodeAddress = accounts[i + 1];
+
+            await cnxInstance.transfer(nodeAddress, new BN(toWei("400", "ether")));
+            await cnxInstance.approve(nodeInstance.address, new BN(toWei("400", "ether")), { from: nodeAddress });
+
+            await nodeInstance.join(gpuNames[i], gpuVrams[i], { from: nodeAddress });
+        }
+
+        nodes = await nodeInstance.selectNodesWithRoot(accounts[1], 3, {from: accounts[0]});
+        assert.include(nodes, accounts[1], "Wrong selected nodes");
+        assert.include(nodes, accounts[2], "Wrong selected nodes");
+        assert.include(nodes, accounts[3], "Wrong selected nodes");
+
+        nodes = await nodeInstance.selectNodesWithRoot(accounts[2], 3, {from: accounts[0]});
+        assert.include(nodes, accounts[2], "Wrong selected nodes");
+        assert.include(nodes, accounts[3], "Wrong selected nodes");
+        assert.include(nodes, accounts[4], "Wrong selected nodes");
     })
 })
