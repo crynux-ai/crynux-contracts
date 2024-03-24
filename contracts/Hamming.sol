@@ -27,6 +27,23 @@ library Hamming {
         return distance;
     }
 
+    function compareHamming(
+        bytes memory a,
+        bytes memory b,
+        uint threshold
+    ) internal pure returns (bool) {
+        if (a.length == b.length && a.length % 8 == 0) {
+            for (uint start = 0; start < a.length; start += 8) {
+                uint distance = hamming(a, b, start, start + 8);
+                if (distance >= threshold) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     function slice(
         bytes memory _bytes,
         uint256 _start,
