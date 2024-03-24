@@ -5,3 +5,5 @@ build/
 abigenBindings
 artifacts/
 cache/
+coverage/
+coverage.json

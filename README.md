@@ -27,6 +27,12 @@ All the test files are located under [```./test```](./test). The tests could be 
 
 ```shell
 $ npm run test
+$ npx hardhat test
+```
+
+### Run coverage
+```
+$ npx hardhat coverage && open coverage/index.html
 ```
 
 ### Generating Contract ABIs
