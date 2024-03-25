@@ -19,7 +19,7 @@ contract TaskQueue is Ownable {
     EnumerableSet.UintSet private sdTaskVrams;
     EnumerableSet.UintSet private gptTaskVrams;
 
-    // store tasks in heap grouped by vrams 
+    // store tasks in heap grouped by vrams
     mapping(uint => TaskMaxHeap) private sdTaskHeaps;
     mapping(uint => TaskMaxHeap) private gptTaskHeaps;
 

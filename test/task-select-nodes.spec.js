@@ -15,10 +15,10 @@ contract("Task", async (accounts) => {
         const taskInstance = await Task.deployed();
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
-    
+
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskType = 0;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
@@ -87,7 +87,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskType = 1;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");

@@ -351,7 +351,7 @@ contract("Task", (accounts) => {
             cheatingResult,
             {from: accounts[2]}
         );
-        
+
         let tx;
         for(let i= 1; i < 3; i++) {
             tx = await taskInstance.discloseTaskResult(

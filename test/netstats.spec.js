@@ -70,9 +70,9 @@ contract("Netstats", (accounts) => {
         const cnxInstance = await CrynuxToken.deployed();
         const nodeInstance = await Node.deployed();
         const netstatsInstance = await NetworkStats.deployed();
-        
+
         await prepareUser(accounts[1], cnxInstance, taskInstance);
-        
+
         for (let i = 0; i < 3; i++) {
             await taskInstance.createTask(
                 0,
@@ -84,7 +84,7 @@ contract("Netstats", (accounts) => {
                 {from: accounts[1]}
             );
         }
-    
+
         let totalTasks = (await netstatsInstance.totalTasks()).toNumber();
         let runningTasks = (await netstatsInstance.runningTasks()).toNumber();
         let queuedTasks = (await netstatsInstance.queuedTasks()).toNumber();
@@ -135,7 +135,7 @@ contract("Netstats", (accounts) => {
                     nonce,
                     { from: accounts[2 + i] });
             }
-    
+
             // disclose task
             for (let i = 0; i < 3; i++) {
                 await taskInstance.discloseTaskResult(
@@ -145,13 +145,13 @@ contract("Netstats", (accounts) => {
                     { from: accounts[2 + i] },
                 );
             }
-    
+
             await taskInstance.reportResultsUploaded(
                 taskId,
                 nodeRounds[accounts[2]],
                 { from: accounts[2] },
             );
-            
+
         }
     })
 })

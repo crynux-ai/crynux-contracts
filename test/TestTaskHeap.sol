@@ -46,7 +46,7 @@ contract TestTaskHeap {
         Assert.equal(task1.taskFee, 300, "Wrong remove task");
         task1 = maxHeap.remove(4);
         Assert.equal(task1.taskFee, 400, "Wrong remove task");
-        
+
         Assert.isFalse(maxHeap.include(3), "Wrong include");
         Assert.isFalse(maxHeap.include(4), "Wrong include");
 
@@ -97,7 +97,7 @@ contract TestTaskHeap {
         Assert.equal(task1.taskFee, 400, "Wrong remove task");
         task1 = minHeap.remove(4);
         Assert.equal(task1.taskFee, 300, "Wrong remove task");
-        
+
         Assert.isFalse(minHeap.include(3), "Wrong include");
         Assert.isFalse(minHeap.include(4), "Wrong include");
 
