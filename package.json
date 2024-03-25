@@ -4,17 +4,32 @@
     "scripts": {
         "compile": "truffle compile",
         "test": "hardhat test; truffle test",
+        "coverage": "hardhat coverage",
         "abi": "truffle compile && truffle run abigen"
     },
     "devDependencies": {
         "@chainsafe/truffle-plugin-abigen": "^0.0.2",
+        "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
         "@openzeppelin/contracts": "^4.9.3",
         "@openzeppelin/test-helpers": "^0.5.16",
         "hardhat": "^2.22.2",
+        "pre-commit": "^1.2.2",
         "solidity-coverage": "^0.7.22",
-        "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
         "truffle": "^5.11.1",
         "truffle-assertions": "^0.9.2",
         "truffle-plugin-verify": "^0.6.4"
-    }
+    },
+    "jest": {
+        "coverageThreshold": {
+            "global": {
+                "branches": 50,
+                "functions": 50,
+                "lines": 50,
+                "statements": 50
+            }
+        }
+    },
+    "pre-commit": [
+        "test"
+    ]
 }
