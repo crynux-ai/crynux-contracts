@@ -3,7 +3,7 @@
     "version": "0.0.1",
     "scripts": {
         "compile": "truffle compile",
-        "test": "truffle test",
+        "test": "hardhat test; truffle test",
         "abi": "truffle compile && truffle run abigen"
     },
     "devDependencies": {

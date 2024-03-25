@@ -1,18 +1,17 @@
-const { expect } = require("chai");
+const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-
 
 class NodeVerifier {
     constructor() {
     }
     async init(initToken) {
-        const [owner, worker] = await ethers.getSigners();
+        var [owner, worker] = await ethers.getSigners();
         const qosInstance = await ethers.deployContract("QOS");
-        const netStatsInstance = await ethers.deployContract("NetworkStats");
+        const netStatsInstance = await ethers.deployContract("NetworkStats");    
         var cnxInstance = await ethers.deployContract("CrynuxToken");
         var nodeInstance = await ethers.deployContract(
             "Node", [cnxInstance, qosInstance, netStatsInstance]);
-        
+
         const taskQueueInstance = await ethers.deployContract("TaskQueue");
         let taskFactory = await ethers.getContractFactory("Task");
         var taskInstance = await taskFactory.connect(owner).deploy(
@@ -69,6 +68,8 @@ class NodeVerifier {
             expect(nodeInfo.status).equal(nodeStatus);
         }
         
+
+        // check more details
         let balanceRet = await this.cnxInstance.balanceOf(this.worker.address);
         expect(balanceRet).equal(ethers.parseUnits(balance, "ether"));
     }
@@ -159,6 +160,284 @@ class NodeVerifier {
         await this.checkNode(contains, nodeStatus, balance);
     }
 }
+
+describe("Node", () => {
+    it("should allow joining and quiting normally", async () => {
+        const gpuName = "NVIDIA GeForce GTX 1070 Ti"
+        const gpuVram = 8
+
+        let node = new NodeVerifier();
+        await node.init("0");
+
+        try {
+            await node.nodeFromWorker.join(gpuName, gpuVram);
+            assert.fail("Transaction not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /Not enough allowance to stake/, "Wrong reason: " + e.toString());
+        }
+
+        await node.approve("400");
+        try {
+            await node.nodeFromWorker.join(gpuName, gpuVram);
+            assert.fail("Transaction not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /Not enough token to stake/, "Wrong reason: " + e.toString());
+        }
+
+        await node.cnxInstance.transfer(node.worker.address, ethers.parseUnits("400", "ether"));
+
+        let status = await node.nodeFromWorker.getNodeStatus(node.worker.address);
+        assert.equal(status, 0, "Node has joined.")
+        await node.nodeFromWorker.join(gpuName, gpuVram);
+        status = await node.nodeFromWorker.getNodeStatus(node.worker.address);
+        assert.equal(status, 1, "Node join failed.");
+
+        const totalNodes = await node.netStatsInstance.totalNodes();
+        assert.equal(totalNodes, 1, "Wrong number of nodes");
+        const balance = await node.cnxInstance.balanceOf(node.worker.address);
+        assert.equal(balance, 0, "Wrong number of tokens");
+
+        const gpus = await node.nodeFromWorker.getAvailableGPUs();
+        assert.equal(gpus.length, 1, "Wrong gpu number");
+        assert.equal(gpus[0].name, gpuName, "Wrong gpu name");
+        assert.equal(gpus[0].vram, gpuVram, "Wrong gpu memory");
+
+        try {
+            await node.nodeFromWorker.join(gpuName, gpuVram);
+            assert.fail("Transaction not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /Node already joined/, "Wrong reason: " + e.toString());
+        }
+
+        await node.nodeFromWorker.quit();
+        status = await node.nodeFromWorker.getNodeStatus(node.worker);
+        assert.equal(status, 0n, "Node quit failed.")
+
+        const totalNodesRet = await node.netStatsInstance.activeNodes();
+        assert.equal(totalNodesRet, 0n, "Wrong number of nodes");
+
+        const restGpus = await node.nodeFromWorker.getAvailableGPUs();
+        assert.equal(restGpus.length, 0, "Wrong gpu number");
+        const balanceRet = await node.cnxInstance.balanceOf(node.worker.address);
+        assert.equal(balanceRet, ethers.parseUnits("400", "ether"), "Wrong number of tokens");
+
+        try {
+            await node.nodeFromWorker.quit();
+            assert.fail("Transaction not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /Illegal node status/, "Wrong reason: " + e.toString());
+        }
+    });
+
+    it("should have the right availability when paused and resumed", async () => {
+        const gpuName = "NVIDIA GeForce GTX 1070 Ti"
+        const gpuVram = 8
+
+        let node = new NodeVerifier();
+        await node.init("400");
+        await node.approve("400");
+        await node.nodeFromWorker.join(gpuName, gpuVram);
+
+        let totalNodes = await node.netStatsInstance.totalNodes();
+        assert.equal(totalNodes, 1, "Wrong number of nodes");
+
+        let availableNodes = await node.nodeFromWorker.getAvailableNodes();
+        assert.equal(availableNodes.length, 1, "Wrong number of available nodes");
+        assert.equal(availableNodes[0], node.worker.address, "Wrong available node address");
+
+        let availableGPUs = await node.nodeFromWorker.getAvailableGPUs();
+        assert.equal(availableGPUs.length, 1, "Wrong gpu number");
+        assert.equal(availableGPUs[0].name, gpuName, "Wrong gpu name");
+        assert.equal(availableGPUs[0].vram, gpuVram, "Wrong gpu memory");
+
+        await node.nodeFromWorker.pause();
+
+        let status = await node.nodeFromWorker.getNodeStatus(node.worker.address);
+        assert.equal(status, 5, "Node pause failed.")
+
+        availableNodes = await node.nodeFromWorker.getAvailableNodes();
+        assert.equal(availableNodes.length, 0, "Wrong number of available nodes");
+
+        availableGPUs = await node.nodeFromWorker.getAvailableGPUs();
+        assert.equal(availableGPUs.length, 0, "Wrong gpu number");
+
+        totalNodes = await node.netStatsInstance.totalNodes();
+        assert.equal(totalNodes, 1, "Wrong number of nodes");
+
+        await node.nodeFromWorker.resume();
+        status = await node.nodeFromWorker.getNodeStatus(node.worker.address);
+        assert.equal(status, 1, "Node resume failed.");
+
+        availableNodes = await node.nodeFromWorker.getAvailableNodes();
+        assert.equal(availableNodes.length, 1, "Wrong number of available nodes");
+
+        availableGPUs = await node.nodeFromWorker.getAvailableGPUs();
+        assert.equal(availableGPUs.length, 1, "Wrong gpu number");
+
+        totalNodes = await node.netStatsInstance.totalNodes();
+        assert.equal(totalNodes, 1, "Wrong number of nodes");
+
+        await node.nodeFromWorker.quit();
+    });
+
+
+    it("should sample nodes correctly", async () => {
+        const gpuNames = [
+            "NVIDIA GeForce GTX 1070 Ti",
+            "NVIDIA GeForce GTX 1070 Ti",
+            "NVIDIA GeForce GTX 1070 Ti",
+            "NVIDIA GeForce RTX 4060",
+            "Apple M1 Pro",
+            "NVIDIA GeForce GTX 4090"
+        ];
+        const gpuVrams = [8, 8, 8, 8, 16, 24]; 
+
+        let node = new NodeVerifier();
+        await node.init("400");
+        await node.approve("400");
+        const noders = await ethers.getSigners(8);
+
+        for (let i = 0; i < 6; i++) {
+            noder = noders[i+2];
+            await node.cnxInstance.transfer(noder.address, ethers.parseUnits("400", "ether"));
+            await node.cnxInstance.connect(noder).approve(
+                node.nodeFromTask.target, ethers.parseUnits("400", "ether"));
+            await node.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
+        }
+
+        const totalNodes = await node.netStatsInstance.totalNodes();
+        assert.equal(totalNodes, 6, "Wrong number of total nodes");
+
+        const availableNodes = await node.nodeFromWorker.getAvailableNodes();
+        assert.equal(availableNodes.length, 6, "Wrong number of available nodes");
+
+        const availableGPUs = await node.nodeFromWorker.getAvailableGPUs();
+        assert.equal(availableGPUs.length, 4, "Wrong number of available GPUs");
+
+        let nodeAddress;
+        let nodeInfo;
+        // filter gpu id
+        try {
+            await node.nodeFromWorker.filterGPUID(16, 2);
+            assert.fail("filterGPUID not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
+        }
+
+        try {
+            await node.nodeFromWorker.filterGPUID(48, 1);
+            assert.fail("filterGPUID not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
+        }
+
+        // sample node by gpu id
+        res = await node.nodeFromWorker.filterGPUID(24, 1);
+        let gpuIDs = res[0];
+        assert.equal(gpuIDs.length, 1, "Wrong gpu ids count");
+        const gpuID = gpuIDs[0];
+
+        res = await node.nodeFromWorker.filterNodesByGPUID(gpuID);
+        nodeAddress = res[0][0];
+        nodeInfo = await node.nodeFromWorker.getNodeInfo(nodeAddress);
+        assert.equal(nodeInfo.gpu.name, "NVIDIA GeForce GTX 4090", "Wrong sample node by gpu id");
+
+        // test node quit
+        let nodeContract = await node.nodeFromWorker.connect(noders[7]);
+        await nodeContract.quit();
+        try {
+            await nodeContract.filterGPUID(24, 1);
+            assert.fail("filterGPUID not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
+        }
+        try {
+            await nodeContract.filterNodesByGPUID(gpuID);
+            assert.fail("selectNodeByGPUID not reverted");
+        } catch (e) {
+            assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
+        }
+    })
+});
+
+describe("Node", async (accounts) => {
+    it("select nodes with root", async () => {
+        const gpuNames = [
+            "NVIDIA GeForce GTX 1070 Ti",
+            "NVIDIA GeForce GTX 4060",
+            "NVIDIA GeForce GTX 4060",
+        ];
+        const gpuVrams = [8, 16, 16];
+
+        let node = new NodeVerifier();
+        await node.init("400");
+        await node.approve("400");
+        const noders = await ethers.getSigners(6);
+
+        for (let i = 0; i < 3; i++) {
+            const noder = noders[i + 2];
+
+            await node.cnxInstance.transfer(noder.address, ethers.parseUnits("400", "ether"));
+            await node.cnxInstance.connect(noder).approve(
+                node.nodeFromTask.target, ethers.parseUnits("400", "ether"));
+
+            await node.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
+        }
+
+        let nodes = await node.nodeFromTask.selectNodesWithRoot(noders[4].address, 3);
+        assert.include(nodes, noders[2].address, "Wrong selected nodes");
+        assert.include(nodes, noders[3].address, "Wrong selected nodes");
+        assert.include(nodes, noders[4].address, "Wrong selected nodes");
+
+        await node.cnxInstance.transfer(noders[5].address, ethers.parseUnits("400", "ether"));
+        await node.cnxInstance.connect(noders[5]).approve(
+            node.nodeFromTask.target, ethers.parseUnits("400", "ether"));
+
+        await node.nodeFromTask.connect(noders[5]).join("NVIDIA GeForce GTX 4060", 16);
+
+        nodes = await node.nodeFromTask.selectNodesWithRoot(noders[4].address, 3);
+        assert.include(nodes, noders[3].address, "Wrong selected nodes");
+        assert.include(nodes, noders[4].address, "Wrong selected nodes");
+        assert.include(nodes, noders[5].address, "Wrong selected nodes");
+    })
+})
+
+describe("Node", async (accounts) => {
+    it("select apple nodes with root", async () => {
+        const gpuNames = [
+            "Apple M1",
+            "Apple M2 Max",
+            "NVIDIA GeForce GTX 4060",
+            "NVIDIA GeForce GTX 4060",
+        ];
+        const gpuVrams = [8, 64, 16, 16];
+        let node = new NodeVerifier();
+        await node.init("400");
+        await node.approve("400");
+        const noders = await ethers.getSigners(7);
+
+        for (let i = 0; i < 4; i++) {
+            const noder = noders[i+2];
+
+            await node.cnxInstance.transfer(noder.address, ethers.parseUnits("400", "ether"));
+            await node.cnxInstance.connect(noder).approve(
+                node.nodeFromTask.target, ethers.parseUnits("400", "ether"));
+
+            await node.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
+        }
+
+        nodes = await node.nodeFromTask.selectNodesWithRoot(noders[2].address, 3);
+        assert.include(nodes, noders[2].address, "Wrong selected nodes");
+        assert.include(nodes, noders[3].address, "Wrong selected nodes");
+        assert.include(nodes, noders[4].address, "Wrong selected nodes");
+
+        nodes = await node.nodeFromTask.selectNodesWithRoot(noders[3].address, 3);
+        assert.include(nodes, noders[3].address, "Wrong selected nodes");
+        assert.include(nodes, noders[4].address, "Wrong selected nodes");
+        assert.include(nodes, noders[5].address, "Wrong selected nodes");
+    })
+})
+
 
 describe("Node", (accounts) => {
     it("should be empty when address is fake", async() => {
@@ -295,6 +574,8 @@ describe("Node", () => {
         await node.checkNode(false, 0n, "500");
         await node.approve("400");
         await node.checkJoin(true, true, 1n, "100", null);
+        // AVAILABLE -> Join
+        await node.checkJoin(false, true, 1n, "100", /Node already joined/);
         // AVAILABLE -> Resume
         await node.checkResume(false, true, 1n, "100");
         // AVAILABLE -> Pause
