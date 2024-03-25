@@ -19,7 +19,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskType = 0;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
@@ -46,7 +46,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskType = 0;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
@@ -67,10 +67,10 @@ contract("Task", async (accounts) => {
             ["NVIDIA GeForce GTX 1070", "NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti"],
             [8, 16, 16]
         );
-        
+
         let queueSize = await taskQueueInstance.size();
         assert.equal(queueSize, 0, "Wrong queue size")
-        
+
         for (let i = 0; i < 3; i++) {
             let nodeTaskId = (await taskInstance.getNodeTask(accounts[2 + i])).toNumber();
             assert.equal(taskId, nodeTaskId, "Wrong node task id")
@@ -88,7 +88,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskType = 0;
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
@@ -126,10 +126,10 @@ contract("Task", async (accounts) => {
             const round = tx.logs[i].args.round;
             await taskInstance.reportTaskError(taskId, round, { from: nodeAddress });
         }
-        
+
         let queueSize = await taskQueueInstance.size();
         assert.equal(queueSize, 0, "Wrong queue size")
-        
+
         for (let i = 0; i < 3; i++) {
             let nodeTaskId = (await taskInstance.getNodeTask(accounts[2 + i])).toNumber();
             assert.equal(nextTaskId, nodeTaskId, "Wrong node task id")
@@ -147,7 +147,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
         const taskFee = new BN(toWei("30", "ether"));
@@ -180,10 +180,10 @@ contract("Task", async (accounts) => {
             ["NVIDIA GeForce GTX 1070", "NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti"],
             [8, 16, 16]
         );
-        
+
         let queueSize = await taskQueueInstance.size();
         assert.equal(queueSize, 2, "Wrong queue size")
-        
+
         for (let i = 0; i < 3; i++) {
             let nodeTaskId = (await taskInstance.getNodeTask(accounts[2 + i])).toNumber();
             assert.equal(taskIds[0], nodeTaskId, "Wrong node task id")
@@ -201,7 +201,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
         const taskFee = new BN(toWei("30", "ether"));
@@ -234,10 +234,10 @@ contract("Task", async (accounts) => {
             ["NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti"],
             [8, 8, 8]
         );
-        
+
         let queueSize = await taskQueueInstance.size();
         assert.equal(queueSize, 2, "Wrong queue size")
-        
+
         for (let i = 0; i < 3; i++) {
             let nodeTaskId = (await taskInstance.getNodeTask(accounts[2 + i])).toNumber();
             assert.equal(taskIds[1], nodeTaskId, "Wrong node task id")
@@ -255,7 +255,7 @@ contract("Task", async (accounts) => {
 
         await cnxInstance.transfer(userAccount, new BN(toWei("600", "ether")));
         await cnxInstance.approve(taskInstance.address, new BN(toWei("600", "ether")), { from: userAccount });
-    
+
         const taskHash = web3.utils.soliditySha3("task hash");
         const dataHash = web3.utils.soliditySha3("data hash");
 
@@ -286,10 +286,10 @@ contract("Task", async (accounts) => {
             ["NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti", "NVIDIA GeForce RTX 4060 Ti"],
             [8, 8, 8]
         );
-        
+
         let queueSize = await taskQueueInstance.size();
         assert.equal(queueSize, 2, "Wrong queue size")
-        
+
         for (let i = 0; i < 3; i++) {
             let nodeTaskId = (await taskInstance.getNodeTask(accounts[2 + i])).toNumber();
             assert.equal(taskIds[2], nodeTaskId, "Wrong node task id")
@@ -327,7 +327,7 @@ contract("Task", async (accounts) => {
             const nodeAddress = tx.logs[i].args.selectedNode;
             nodeRounds[nodeAddress] = tx.logs[i].args.round;
         }
-        
+
         await taskInstance.createTask(0, taskHash, dataHash, 8, new BN(toWei("40", "ether")), 1, {from: userAccount});
 
         const result = "0x0102030405060708";

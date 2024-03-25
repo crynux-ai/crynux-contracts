@@ -71,7 +71,7 @@ contract("Task", (accounts) => {
             nodeBalances.push(balance);
         }
         const [taskId, nodeRounds] = await prepareTask(accounts, cnxInstance, nodeInstance, taskInstance);
-        
+
         try {
             await taskInstance.cancelTask(taskId, { from: accounts[1] });
         } catch (e) {
@@ -97,7 +97,7 @@ contract("Task", (accounts) => {
             1,
             {from: accounts[1]}
         );
-    
+
         const taskId = tx.logs[0].args.taskId;
 
         tx = await taskInstance.cancelTask(taskId, { from: accounts[1] });
@@ -161,7 +161,7 @@ contract("Task", (accounts) => {
         assert.equal(creatorBalance.toString(), afterCreatorBalance.add(new BN(toWei("18", "ether"))).toString());
 
         let balance = await cnxInstance.balanceOf(accounts[2]);
-        assert.equal(nodeBalances[0].toString(), balance.toString()); 
+        assert.equal(nodeBalances[0].toString(), balance.toString());
         balance = await cnxInstance.balanceOf(accounts[3]);
         assert.equal(nodeBalances[1].add(new BN(toWei("18", "ether"))).toString(), balance.toString());
         balance = await cnxInstance.balanceOf(accounts[4]);

@@ -7,7 +7,7 @@ class NodeVerifier {
     async init(initToken) {
         var [owner, worker] = await ethers.getSigners();
         const qosInstance = await ethers.deployContract("QOS");
-        const netStatsInstance = await ethers.deployContract("NetworkStats");    
+        const netStatsInstance = await ethers.deployContract("NetworkStats");
         var cnxInstance = await ethers.deployContract("CrynuxToken");
         var nodeInstance = await ethers.deployContract(
             "Node", [cnxInstance, qosInstance, netStatsInstance]);
@@ -67,7 +67,7 @@ class NodeVerifier {
             let nodeInfo = await this.nodeFromTask.getNodeInfo(this.worker.address);
             expect(nodeInfo.status).equal(nodeStatus);
         }
-        
+
 
         // check more details
         let balanceRet = await this.cnxInstance.balanceOf(this.worker.address);
@@ -84,7 +84,7 @@ class NodeVerifier {
         }
         await this.checkNode(contains, nodeStatus, balance);
     }
-        
+
     async checkPause(success, contains, nodeStatus, balance) {
         try {
             await this.nodeFromWorker.pause();
@@ -290,7 +290,7 @@ describe("Node", () => {
             "Apple M1 Pro",
             "NVIDIA GeForce GTX 4090"
         ];
-        const gpuVrams = [8, 8, 8, 8, 16, 24]; 
+        const gpuVrams = [8, 8, 8, 8, 16, 24];
 
         let node = new NodeVerifier();
         await node.init("400");
@@ -305,54 +305,53 @@ describe("Node", () => {
             await node.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
         }
 
-        const totalNodes = await node.netStatsInstance.totalNodes();
+        let totalNodes = await node.netStatsInstance.totalNodes();
         assert.equal(totalNodes, 6, "Wrong number of total nodes");
 
-        const availableNodes = await node.nodeFromWorker.getAvailableNodes();
+        let availableNodes = await node.nodeFromWorker.getAvailableNodes();
         assert.equal(availableNodes.length, 6, "Wrong number of available nodes");
 
-        const availableGPUs = await node.nodeFromWorker.getAvailableGPUs();
+        let availableGPUs = await node.nodeFromWorker.getAvailableGPUs();
         assert.equal(availableGPUs.length, 4, "Wrong number of available GPUs");
 
-        let nodeAddress;
-        let nodeInfo;
-        // filter gpu id
+        let seed = ethers.encodeBytes32String("test");
+        // No enough nodes.
         try {
-            await node.nodeFromWorker.filterGPUID(16, 2);
+            await node.nodeFromTask.randomSelectNodes(3, 16, false, seed);
             assert.fail("filterGPUID not reverted");
         } catch (e) {
             assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
+        // No available node.
         try {
-            await node.nodeFromWorker.filterGPUID(48, 1);
+            await node.nodeFromTask.randomSelectNodes(1, 48, false, seed);
             assert.fail("filterGPUID not reverted");
         } catch (e) {
             assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
 
-        // sample node by gpu id
-        res = await node.nodeFromWorker.filterGPUID(24, 1);
-        let gpuIDs = res[0];
-        assert.equal(gpuIDs.length, 1, "Wrong gpu ids count");
-        const gpuID = gpuIDs[0];
+        // Select node
+        res = await node.nodeFromTask.randomSelectNodes(1, 24, false, seed);
+        totalNodes = await node.netStatsInstance.totalNodes();
+        assert.equal(totalNodes, 6, "Wrong number of total nodes");
+        availableNodes = await node.nodeFromWorker.getAvailableNodes();
+        assert.equal(availableNodes.length, 5, "Wrong number of available nodes");
 
-        res = await node.nodeFromWorker.filterNodesByGPUID(gpuID);
-        nodeAddress = res[0][0];
-        nodeInfo = await node.nodeFromWorker.getNodeInfo(nodeAddress);
-        assert.equal(nodeInfo.gpu.name, "NVIDIA GeForce GTX 4090", "Wrong sample node by gpu id");
+        status = await node.nodeFromTask.getNodeStatus(noders[7]);
+        assert.equal(status, 2, "Wrong sample node by gpu id");
 
         // test node quit
-        let nodeContract = await node.nodeFromWorker.connect(noders[7]);
+        let nodeContract = await node.nodeFromTask.connect(noders[7])
         await nodeContract.quit();
         try {
-            await nodeContract.filterGPUID(24, 1);
-            assert.fail("filterGPUID not reverted");
+            await node.nodeFromTask.randomSelectNodes(1, 24, false, seed);
+            assert.fail("randomSelectNodes not reverted");
         } catch (e) {
             assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
         }
         try {
-            await nodeContract.filterNodesByGPUID(gpuID);
+            await node.nodeFromTask.randomSelectNodes(1, 24, true, seed);
             assert.fail("selectNodeByGPUID not reverted");
         } catch (e) {
             assert.match(e.toString(), /No available node/, "Wrong reason: " + e.toString());
@@ -444,7 +443,8 @@ describe("Node", (accounts) => {
         let node = new NodeVerifier();
         await node.init("1000");
         let anotherAddr = ethers.getAddress("0x0000000000000000000000000000000000000123");
-        
+        let seed = ethers.encodeBytes32String("test");
+
         // The behavior is different between truffle and hardhat.
         nodeInfo = await node.nodeFromTask.getNodeInfo(anotherAddr);
         expect(nodeInfo).to.deep.equal([
@@ -456,13 +456,13 @@ describe("Node", (accounts) => {
         nodeStatus = await node.nodeFromTask.getNodeStatus(anotherAddr);
         expect(nodeStatus).equal(0n);
         try {
-            await node.nodeFromTask.filterGPUID(8, 2);
+            await node.nodeFromTask.randomSelectNodes(1, 1, false, seed);
             expect.fail("Transaction not reverted");
         } catch(e) {
             expect(e.toString()).match(/No available node/);
-        }     
+        }
         try {
-            await node.nodeFromTask.filterNodesByGPUID(ethers.encodeBytes32String("test"));
+            await node.nodeFromTask.randomSelectNodes(1, 1, false, ethers.encodeBytes32String("test"));
             expect.fail("Transaction not reverted");
         } catch(e) {
             expect(e.toString()).match(/No available node/);
@@ -511,7 +511,7 @@ describe("Node", (accounts) => {
         } catch(e) {
             expect(e.toString()).match(/contract runner does not support sending transactions/);
         }
-        
+
     })
 })
 
@@ -592,6 +592,3 @@ describe("Node", () => {
         await node.checkQuit(false, true, 1n, "100");
     })
 })
-
-
-

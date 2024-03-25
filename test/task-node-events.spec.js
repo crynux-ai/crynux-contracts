@@ -40,7 +40,7 @@ contract("Task", (accounts) => {
         }
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        
+
         const events = await taskInstance.getPastEvents("TaskNodeSuccess", {fromBlock: 0, toBlock: "latest"});
         assert.equal(events.length, 3, "Wrong event count");
         for (const event of events) {
@@ -107,7 +107,7 @@ contract("Task", (accounts) => {
         }
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        
+
         const successEvents = await taskInstance.getPastEvents("TaskNodeSuccess", {fromBlock: 0, toBlock: "latest"});
         assert.equal(successEvents.length, 2, "Wrong event count");
         for (const event of successEvents) {
@@ -165,7 +165,7 @@ contract("Task", (accounts) => {
         }
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        
+
         const successEvents = await taskInstance.getPastEvents("TaskNodeSuccess", {fromBlock: 0, toBlock: "latest"});
         assert.equal(successEvents.length, 2, "Wrong event count");
         for (const event of successEvents) {
@@ -215,7 +215,7 @@ contract("Task", (accounts) => {
         }
 
         await taskInstance.reportResultsUploaded(taskId, nodeRounds[accounts[2]], {from: accounts[2]});
-        
+
         const successEvents = await taskInstance.getPastEvents("TaskNodeSuccess", {fromBlock: 0, toBlock: "latest"});
         assert.equal(successEvents.length, 2, "Wrong event count");
         for (const event of successEvents) {
@@ -260,7 +260,7 @@ contract("Task", (accounts) => {
 
         await time.increase(time.duration.hours(1));
         await taskInstance.cancelTask(taskId, {from: accounts[4]});
-        
+
         const successEvents = await taskInstance.getPastEvents("TaskNodeCancelled", {fromBlock: 0, toBlock: "latest"});
         assert.equal(successEvents.length, 3, "Wrong event count");
         for (const event of successEvents) {
@@ -304,7 +304,7 @@ contract("Task", (accounts) => {
 
         await time.increase(time.duration.hours(1));
         await taskInstance.cancelTask(taskId, {from: accounts[4]});
-        
+
         const events = await taskInstance.getPastEvents("TaskNodeCancelled", {fromBlock: 0, toBlock: "latest"});
         assert.equal(events.length, 3, "Wrong event count");
         for (const event of events) {

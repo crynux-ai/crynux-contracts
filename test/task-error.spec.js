@@ -429,4 +429,3 @@ contract("Task", (accounts) => {
         assert.equal(task.id, 0, "task not deleted");
     });
 })
-
