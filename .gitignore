@@ -3,3 +3,8 @@
 node_modules/
 build/
 abigenBindings
+artifacts/
+cache/
+coverage/
+coverage.json
+.DS_Store
