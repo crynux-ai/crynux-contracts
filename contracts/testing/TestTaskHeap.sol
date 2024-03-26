@@ -71,7 +71,7 @@ contract TestTaskHeap {
     function testMaxHeapRemove(uint idx) public {
         removeTaskRes.push(maxHeap.remove(idx));
     }
-      
+
     function testMinHeapInsert() public {
         for (uint i = 0; i < 6; i++) {
             TaskInQueue memory task = TaskInQueue({
