@@ -24,10 +24,3 @@ repos:
         args:
         -   --markdown-linebreak-ext=md
 
--   repo: local
-    hooks:
-    -   id: test
-        name: Unit tests
-        entry: npm test
-        files: hardhat_test/.*_test.js
-        language: system
