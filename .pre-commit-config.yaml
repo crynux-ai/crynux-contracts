@@ -23,4 +23,3 @@ repos:
         exclude: '^.*\.patch$'
         args:
         -   --markdown-linebreak-ext=md
-

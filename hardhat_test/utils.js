@@ -5,7 +5,7 @@ class Verifier {
         var [owner, user, ...accounts] = await ethers.getSigners();
         //accounts = await ethers.getSigners();
         var cnxInstance = await ethers.deployContract("CrynuxToken");
-        var qosInstance = await ethers.deployContract("QOS");   
+        var qosInstance = await ethers.deployContract("QOS");
         var netstatsInstance = await ethers.deployContract("NetworkStats");
         var nodeInstance = await ethers.deployContract(
             "Node", [cnxInstance, qosInstance, netstatsInstance]);
