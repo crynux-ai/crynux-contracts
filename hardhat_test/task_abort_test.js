@@ -1,4 +1,4 @@
-const { assert, expect, use } = require("chai");
+const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { Verifier } = require("./utils");
 
