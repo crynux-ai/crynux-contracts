@@ -2,7 +2,7 @@ const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { Verifier } = require("./utils");
 
-describe("Task", (accounts) => {
+describe("Task", () => {
     it("should cancel successfully before task execution", async () => {
         v = new Verifier();
         await v.init();
@@ -96,7 +96,7 @@ describe("Task", (accounts) => {
 });
 
 
-describe("Task", (accounts) => {
+describe("Task", () => {
     it("should cancel successfully after two nodes disclose", async () => {
         v = new Verifier();
         await v.init();
@@ -149,7 +149,7 @@ describe("Task", (accounts) => {
     });
 })
 
-describe("Task", (accounts) => {
+describe("Task", () => {
     it("should cancel successfully after two nodes report error", async () => {
         v = new Verifier();
         await v.init();
