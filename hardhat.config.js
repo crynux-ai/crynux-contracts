@@ -1,5 +1,6 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("@nomicfoundation/hardhat-chai-matchers");
+require('@symblox/hardhat-abi-gen');
 
 module.exports = {
     solidity: {
@@ -18,8 +19,15 @@ module.exports = {
     },
     paths: {
         sources: "./contracts",
-        tests: "./hardhat_test",
+        tests: "./test",
         cache: "./cache",
         artifacts: "./artifacts"
     },
+    abiExporter: {
+        path: 'abi',
+        clear: true,
+        flat: true,
+        except: ["Test.*"],
+        spacing: 2
+    }
 };
