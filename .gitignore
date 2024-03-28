@@ -7,4 +7,5 @@ artifacts/
 cache/
 coverage/
 coverage.json
+abi/
 .DS_Store

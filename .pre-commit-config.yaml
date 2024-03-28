@@ -29,5 +29,5 @@ repos:
     -   id: test
         name: Unit tests
         entry: npx hardhat test
-        files: hardhat_test/.*_test.js
+        files: test/.*_test.js
         language: system
