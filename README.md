@@ -5,9 +5,9 @@ The solidity contracts to coordinate the nodes and tasks.
 ### Task State Transitions
 ![Task State Transitions](./docs/state-transitions.png)
 
-### Compilation
+### Compilation and Generating Contract ABIs
 
-The contracts are developed using the Truffle framework.
+The contracts are developed using the Hardhat framework.
 
 Install the dependencies before compilation:
 
@@ -15,10 +15,12 @@ Install the dependencies before compilation:
 $ npm install
 ```
 
-Run truffle compiling command using npm:
+Run hardhat compiling command using npm:
+
+ABI is generated using [@symblox/hardhat-abi-gen](https://github.com/symblox/hardhat-abi-gen/).
 
 ```shell
-$ npm run compile
+$ mkdir abi && npm run compile
 ```
 
 ### Tests
@@ -27,14 +29,10 @@ All the test files are located under [```./test```](./test). The tests could be 
 
 ```shell
 $ npm run test
+$ npx hardhat test
 ```
 
-### Generating Contract ABIs
-
-The ABIs are generated using [truffle-plugin-abigen](https://github.com/ChainSafe/truffle-plugin-abigen).
-
-Create a folder named ```abigenBindings``` under the project root folder and then run the following command:
-
-```shell
-$ npm run abi
+### Run coverage
+```
+$ npx hardhat coverage && open coverage/index.html
 ```

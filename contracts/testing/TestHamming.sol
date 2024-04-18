@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.18;
 
-import "truffle/Assert.sol";
-import "../contracts/Hamming.sol";
+import "../Hamming.sol";
 
 contract TestHamming {
-    function testHamming() public {
+    function testHamming() public view returns (uint, uint) {
         bytes memory a = new bytes(16);
         bytes memory b = new bytes(16);
 
@@ -20,10 +19,6 @@ contract TestHamming {
 
         uint res;
 
-        res = Hamming.hamming(a, b, 0, 8);
-        Assert.equal(res, 0, "Wrong hamming result");
-
-        res = Hamming.hamming(a, b, 8, 16);
-        Assert.equal(res, 8, "Wrong hamming result");
+        return (Hamming.hamming(a, b, 0, 8), Hamming.hamming(a, b, 8, 16));
     }
 }
