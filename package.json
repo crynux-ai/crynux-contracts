@@ -9,10 +9,10 @@
     "devDependencies": {
         "@nomicfoundation/hardhat-chai-matchers": "^2.0.6",
         "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
+        "@nomicfoundation/hardhat-toolbox": "^5.0.0",
         "@openzeppelin/contracts": "^4.9.3",
         "@openzeppelin/test-helpers": "^0.5.16",
         "@symblox/hardhat-abi-gen": "^0.2.0",
-        "hardhat": "^2.22.2",
-        "solidity-coverage": "^0.7.22"
+        "hardhat": "^2.22.2"
     }
 }

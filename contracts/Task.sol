@@ -493,7 +493,8 @@ contract Task is Ownable {
             // free unfinished nodes and delete the task
             for (uint i = 0; i < 3; i++) {
                 address nodeAddress = tasks[taskId].selectedNodes[i];
-                if (nodeTasks[nodeAddress] != 0) {
+                // ensure current task of the node is the cancelled task
+                if (nodeTasks[nodeAddress] == taskId) {
                     nodeTasks[nodeAddress] = 0;
                     node.finishTask(nodeAddress);
                     emit TaskNodeCancelled(taskId, nodeAddress);
