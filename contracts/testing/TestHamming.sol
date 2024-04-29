@@ -17,8 +17,6 @@ contract TestHamming {
             }
         }
 
-        uint res;
-
         return (Hamming.hamming(a, b, 0, 8), Hamming.hamming(a, b, 8, 16));
     }
 }
