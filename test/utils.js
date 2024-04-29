@@ -1,18 +1,24 @@
 const { assert, expect } = require("chai");
+const { ethers } = require("hardhat");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 class Verifier {
     async init () {
         var [owner, user, ...accounts] = await ethers.getSigners();
         //accounts = await ethers.getSigners();
-        var cnxInstance = await ethers.deployContract("CrynuxToken");
         var qosInstance = await ethers.deployContract("QOS");
         var netstatsInstance = await ethers.deployContract("NetworkStats");
         var nodeInstance = await ethers.deployContract(
-            "Node", [cnxInstance, qosInstance, netstatsInstance]);
+            "Node", [qosInstance, netstatsInstance]);
         var taskQueueInstance = await ethers.deployContract("TaskQueue");
         var taskInstance = await ethers.deployContract("Task",
-            [nodeInstance, cnxInstance, qosInstance, taskQueueInstance, netstatsInstance]);
-
+            [nodeInstance, qosInstance, taskQueueInstance, netstatsInstance]);
+        
+        await helpers.setBalance(owner.address, ethers.parseEther("10000"));
+        await helpers.setBalance(user.address, 0);
+        for (const account of accounts) {
+            await helpers.setBalance(account.address, 0);
+        }
         await netstatsInstance.updateNodeContractAddress(nodeInstance.target);
         await netstatsInstance.updateTaskContractAddress(taskInstance.target);
         await qosInstance.updateNodeContractAddress(nodeInstance.target);
@@ -21,7 +27,6 @@ class Verifier {
         await nodeInstance.updateTaskContractAddress(taskInstance.target);
 
         this.taskInstance = taskInstance;
-        this.cnxInstance = cnxInstance;
         this.nodeInstance = nodeInstance;
         this.netstatsInstance = netstatsInstance;
         this.qosInstance = qosInstance;
@@ -46,38 +51,43 @@ class Verifier {
     }
 
     async prepareNode(nodeAccount, gpuName = "NVIDIA GeForce GTX 1070 Ti", gpuVram = 8) {
-        await this.cnxInstance.transfer(nodeAccount.address, ethers.parseUnits("400", "ether"));
-        await this.cnxInstance.connect(nodeAccount).approve(this.nodeInstance.target, ethers.parseUnits("400", "ether"));
-        var nodeContract = await this.nodeInstance.connect(nodeAccount);
-        await nodeContract.join(gpuName, gpuVram);
+        await this.owner.sendTransaction({
+            value: ethers.parseEther("500"),
+            to: nodeAccount
+        });
+        var nodeContract = this.nodeInstance.connect(nodeAccount);
+        await nodeContract.join(gpuName, gpuVram, {value: ethers.parseEther("400")});
     }
 
     async prepareUser(userAccount) {
-        await this.cnxInstance.transfer(userAccount.address, ethers.parseUnits("500", "ether"));
-        await this.cnxInstance.connect(userAccount).approve(this.taskInstance.target, ethers.parseUnits("500", "ether"));
+        await this.owner.sendTransaction({
+            value: ethers.parseEther("500"),
+            to: userAccount
+        })
     }
 
     async prepareTask(user, accounts, taskType = 0, vramLimit = 0) {
 
         // Create the task.
 
-        const balBefore = await this.cnxInstance.balanceOf(user);
+        const balBefore = await ethers.provider.getBalance(user);
         const taskFee = ethers.parseUnits("50", "ether");
 
-        let tx = await this.taskInstance.connect(user).createTask(
+        const tx = await this.taskInstance.connect(user).createTask(
             taskType,
             ethers.solidityPackedKeccak256(["string"], ["task hash"]),
             ethers.solidityPackedKeccak256(["string"], ["data hash"]),
             vramLimit,
-            taskFee,
             1,
+            {value: taskFee},
         );
-        tx = await tx.wait();
-        let logs = tx.logs.filter((x) => x.constructor.name == "EventLog");
+        const receipt = await tx.wait();
+        let logs = receipt.logs.filter((x) => x.constructor.name == "EventLog");
         assert.equal(logs.length, 4, "wrong log number");
 
-        const balAfter = await this.cnxInstance.balanceOf(user);
-        assert.equal(balBefore, balAfter + taskFee, "user task fee not paid");
+        const gasCost = receipt.gasUsed * receipt.gasPrice;  
+        const balAfter = await ethers.provider.getBalance(user);
+        assert.equal(balBefore, balAfter + taskFee + gasCost, "user task fee not paid");
 
         const taskId = logs[0].args.taskId;
         let nodeRounds = {};
@@ -92,7 +102,7 @@ class Verifier {
             assert.equal(taskId.toString(), nodeTaskId.toString(), "incorrect node task");
         }
 
-        return [taskId, nodeRounds];
+        return [taskId, nodeRounds, taskFee, gasCost];
     }
 
 
@@ -103,4 +113,9 @@ class Verifier {
 
 }
 
-module.exports = {Verifier};
+async function getGasCost(tx) {
+    const receipt = await tx.wait();
+    return receipt.gasUsed * receipt.gasPrice;
+}
+
+module.exports = {Verifier, getGasCost};

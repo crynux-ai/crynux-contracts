@@ -9,7 +9,7 @@ describe("Task", () => {
         await v.prepareNetwork();
         await v.prepareUser(v.user);
 
-        const [taskId, nodeRounds] = await v.prepareTask(v.user, v.accounts);
+        const [taskId, nodeRounds, , ] = await v.prepareTask(v.user, v.accounts);
 
         const [commitment, nonce] = await v.getCommitment("0xdeadbeef");
 
