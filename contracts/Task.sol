@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./Node.sol";
@@ -38,7 +37,6 @@ contract Task is Ownable {
 
     Node private node;
     QOS private qos;
-    IERC20 private cnxToken;
     TaskQueue private taskQueue;
     NetworkStats private netStats;
 
@@ -79,13 +77,11 @@ contract Task is Ownable {
 
     constructor(
         Node nodeInstance,
-        IERC20 tokenInstance,
         QOS qosInstance,
         TaskQueue taskQueueInstance,
         NetworkStats netStatsInstance
     ) {
         node = nodeInstance;
-        cnxToken = tokenInstance;
         qos = qosInstance;
         taskQueue = taskQueueInstance;
         netStats = netStatsInstance;
@@ -102,21 +98,13 @@ contract Task is Ownable {
         bytes32 taskHash,
         bytes32 dataHash,
         uint vramLimit,
-        uint taskFee,
         uint cap
-    ) public {
+    ) payable public {
         require(
             taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM,
             "Invalid task type"
         );
-        require(
-            cnxToken.balanceOf(msg.sender) >= taskFee,
-            "Not enough tokens for task"
-        );
-        require(
-            cnxToken.allowance(msg.sender, address(this)) >= taskFee,
-            "Not enough allowance for task"
-        );
+        uint taskFee = msg.value;
 
         TaskInfo memory taskInfo;
 
@@ -134,11 +122,6 @@ contract Task is Ownable {
         taskInfo.nonces = new bytes32[](3);
         taskInfo.results = new bytes[](3);
         taskInfo.aborted = false;
-
-        require(
-            cnxToken.transferFrom(msg.sender, address(this), taskFee),
-            "Task fee payment failed"
-        );
 
         bytes32 seed = keccak256(
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
@@ -461,11 +444,10 @@ contract Task is Ownable {
             );
             // return unuses task fee to task creator
             if (tasks[taskId].balance > 0) {
-                require(
-                    cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
-                    "Token transfer failed"
-                );
+                uint token = tasks[taskId].balance;
                 tasks[taskId].balance = 0;
+                (bool success, ) = tasks[taskId].creator.call{value: token}("");
+                require(success, "Token transfer failed");
             }
 
             if (tasks[taskId].commitmentSubmitRounds.length == 0) {
@@ -505,10 +487,8 @@ contract Task is Ownable {
         } else if (taskQueue.include(taskId)) {
             // task hasn't been executed
             TaskInQueue memory task = taskQueue.removeTask(taskId);
-            require(
-                cnxToken.transfer(task.creator, task.taskFee),
-                "Token transfer failed"
-            );
+            (bool success, ) = task.creator.call{value: task.taskFee}("");
+            require(success, "Token transfer failed");
             // stats task count in netstats
             netStats.taskStarted();
             netStats.taskFinished();
@@ -596,11 +576,10 @@ contract Task is Ownable {
 
     function abortTask(uint256 taskId) internal {
         // Return the task fee to the user
-        require(
-            cnxToken.transfer(tasks[taskId].creator, tasks[taskId].balance),
-            "Token transfer failed"
-        );
+        uint token = tasks[taskId].balance;
         tasks[taskId].balance = 0;
+        (bool success, ) = tasks[taskId].creator.call{value: token}("");
+        require(success, "Token transfer failed");
 
         // Free the nodes
         for (uint i = 0; i < 3; i++) {
@@ -645,8 +624,9 @@ contract Task is Ownable {
         if (tasks[taskId].balance - fee < 3) {
             fee = tasks[taskId].balance;
         }
-        require(cnxToken.transfer(nodeAddress, fee), "Token transfer failed");
         tasks[taskId].balance -= fee;
+        (bool success, ) = nodeAddress.call{value: fee}("");
+        require(success, "Token transfer failed");
 
         // Free the node
         nodeTasks[nodeAddress] = 0;
@@ -672,11 +652,9 @@ contract Task is Ownable {
         if (tasks[taskId].balance - fee < 3) {
             fee = tasks[taskId].balance;
         }
-        require(
-            cnxToken.transfer(tasks[taskId].creator, fee),
-            "Token transfer failed"
-        );
         tasks[taskId].balance -= fee;
+        (bool success, ) = tasks[taskId].creator.call{value: fee}("");
+        require(success, "Token transfer failed");
 
         // remove node's qos task score
         qos.punish(nodeAddress);

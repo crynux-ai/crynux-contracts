@@ -1,6 +1,7 @@
 const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { Verifier } = require("./utils");
+const { ethers } = require("hardhat");
 
 describe("Netstats", () => {
     var v;
@@ -13,7 +14,7 @@ describe("Netstats", () => {
         await v.prepareNetwork();
         await v.prepareUser(v.user);
 
-        const [taskId, nodeRounds] = await v.prepareTask(v.user, v.accounts);
+        const [taskId, nodeRounds, , ] = await v.prepareTask(v.user, v.accounts);
         let totalTasks = (await v.netstatsInstance.totalTasks());
         let runningTasks = (await v.netstatsInstance.runningTasks());
         let queuedTasks = (await v.netstatsInstance.queuedTasks());
@@ -74,8 +75,8 @@ describe("Netstats", () => {
                 ethers.solidityPackedKeccak256(["string"], ["task hash"]),
                 ethers.solidityPackedKeccak256(["string"], ["data hash"]),
                 8,
-                ethers.parseUnits("10", "ether"),
                 1,
+                {value: ethers.parseUnits("10", "ether")},
             );
         }
 
@@ -92,9 +93,8 @@ describe("Netstats", () => {
         const gpuVram = 8;
         for (let i = 0; i < 3; i++) {
             const nodeAccount = v.accounts[i];
-            await v.cnxInstance.transfer(nodeAccount, ethers.parseUnits("400", "ether"));
-            await v.cnxInstance.connect(nodeAccount).approve(v.nodeInstance.target, ethers.parseUnits("400", "ether"));
-            await v.nodeInstance.connect(nodeAccount).join(gpuName, gpuVram);
+            await helpers.setBalance(nodeAccount.address, ethers.parseEther("500"));
+            await v.nodeInstance.connect(nodeAccount).join(gpuName, gpuVram, {value: ethers.parseEther("400")});
         }
 
         const result = "0x0102030405060708";

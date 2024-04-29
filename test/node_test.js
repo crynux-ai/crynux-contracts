@@ -1,5 +1,6 @@
 const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { ethers } = require("hardhat");
 
 class NodeVerifier {
     constructor() {
@@ -8,25 +9,23 @@ class NodeVerifier {
         var [owner, worker] = await ethers.getSigners();
         const qosInstance = await ethers.deployContract("QOS");
         const netStatsInstance = await ethers.deployContract("NetworkStats");
-        var cnxInstance = await ethers.deployContract("CrynuxToken");
         var nodeInstance = await ethers.deployContract(
-            "Node", [cnxInstance, qosInstance, netStatsInstance]);
+            "Node", [qosInstance, netStatsInstance]);
 
         const taskQueueInstance = await ethers.deployContract("TaskQueue");
         let taskFactory = await ethers.getContractFactory("Task");
         var taskInstance = await taskFactory.connect(owner).deploy(
-            nodeInstance, cnxInstance, qosInstance, taskQueueInstance, netStatsInstance);
+            nodeInstance, qosInstance, taskQueueInstance, netStatsInstance);
         await nodeInstance.updateTaskContractAddress(taskInstance.target);
         await helpers.impersonateAccount(taskInstance.target);
         var taskSigner = await ethers.getSigner(taskInstance.target);
         await helpers.setBalance(taskSigner.address, ethers.parseUnits("100000", "ether"));
-        taskInstance = await taskInstance.connect(taskSigner);
+        taskInstance = taskInstance.connect(taskSigner);
 
-        var nodeFromWorker = await nodeInstance.connect(worker);
+        var nodeFromWorker = nodeInstance.connect(worker);
         this.nodeFromWorker = nodeFromWorker;
-        var nodeFromTask = await nodeInstance.connect(taskSigner);
+        var nodeFromTask = nodeInstance.connect(taskSigner);
         this.nodeFromTask = nodeFromTask;
-        this.cnxInstance = cnxInstance;
         this.netStatsInstance = netStatsInstance;
         this.taskInstance = taskInstance;
 
@@ -35,12 +34,7 @@ class NodeVerifier {
         this.tasker = taskSigner;
         await netStatsInstance.updateNodeContractAddress(this.nodeFromWorker.target)
         await qosInstance.updateNodeContractAddress(this.nodeFromWorker.target)
-        await this.cnxInstance.transfer(this.worker.address, ethers.parseUnits(initToken, "ether"));
-    }
-
-    async approve(token) {
-        await this.cnxInstance.connect(this.worker).approve(
-            this.nodeFromTask.target, ethers.parseUnits(token, "ether"));
+        await helpers.setBalance(this.worker.address, ethers.parseUnits(initToken, "ether"))
     }
 
     _checkSuccess(success) {
@@ -50,7 +44,7 @@ class NodeVerifier {
         if (success) expect.fail("Transaction failed");
     }
 
-    async checkNode(contains, nodeStatus, balance) {
+    async checkNode(contains, nodeStatus) {
         let status = await this.nodeFromTask.getNodeStatus(this.worker.address);
         expect(status).equal(nodeStatus);
         if (!contains) {
@@ -67,25 +61,22 @@ class NodeVerifier {
             let nodeInfo = await this.nodeFromTask.getNodeInfo(this.worker.address);
             expect(nodeInfo.status).equal(nodeStatus);
         }
-
-
-        // check more details
-        let balanceRet = await this.cnxInstance.balanceOf(this.worker.address);
-        expect(balanceRet).equal(ethers.parseUnits(balance, "ether"));
     }
 
-    async checkJoin(success, contains, nodeStatus, balance, errExp) {
+    async checkJoin(success, contains, nodeStatus, errExp) {
         try {
-            await this.nodeFromWorker.join("Apple M1", 8);
+            await expect(this.nodeFromWorker.join("Apple M1", 8, {value: ethers.parseEther("400")})).to.changeEtherBalance(
+                this.worker, ethers.parseEther("-400")
+            );
             this._checkSuccess(success);
         } catch (e) {
             expect(e.toString()).match(errExp);
             this._checkFail(success);
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 
-    async checkPause(success, contains, nodeStatus, balance) {
+    async checkPause(success, contains, nodeStatus) {
         try {
             await this.nodeFromWorker.pause();
             this._checkSuccess(success);
@@ -93,10 +84,10 @@ class NodeVerifier {
             expect(e.toString()).to.match(/Illegal node status/);
             this._checkFail(success);
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 
-    async checkResume(success, contains, nodeStatus, balance) {
+    async checkResume(success, contains, nodeStatus) {
         try {
             await this.nodeFromWorker.resume();
             this._checkSuccess(success);
@@ -104,10 +95,10 @@ class NodeVerifier {
             expect(e.toString()).to.match(/Illegal node status/);
             this._checkFail(success);
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 
-    async checkSlash(success, contains, nodeStatus, balance) {
+    async checkSlash(success, contains, nodeStatus) {
         try {
             await this.nodeFromWorker.slash(this.worker.address);
             this._checkSuccess(success);
@@ -123,10 +114,10 @@ class NodeVerifier {
             expect(e.toString()).to.match(/Illegal node status/);
             this._checkFail(success);
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 
-    async checkStartTask(success, contains, nodeStatus, balance) {
+    async checkStartTask(success, contains, nodeStatus) {
         try {
             await this.nodeFromTask.startTask(this.worker.address);
             this._checkSuccess(success);
@@ -134,10 +125,10 @@ class NodeVerifier {
             expect(e.toString()).to.match(/Node is not available/);
             this._checkFail(success);
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 
-    async checkFinishTask(success, contains, nodeStatus, balance) {
+    async checkFinishTask(success, contains, nodeStatus) {
         try {
             await this.nodeFromTask.finishTask(this.worker.address);
             this._checkSuccess(success);
@@ -146,18 +137,20 @@ class NodeVerifier {
             this._checkFail(success);
 
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 
-    async checkQuit(success, contains, nodeStatus, balance) {
+    async checkQuit(success, contains, nodeStatus) {
         try {
-            await this.nodeFromTask.finishTask(this.worker.address);
+            await expect(this.nodeFromTask.finishTask(this.worker.address)).to.changeEtherBalance(
+                this.worker, ethers.parseEther("400")
+            );
             this._checkSuccess(success);
         } catch(e) {
             expect(e.toString()).to.match(/Illegal node status/);
             this._checkFail(success);
         }
-        await this.checkNode(contains, nodeStatus, balance);
+        await this.checkNode(contains, nodeStatus);
     }
 }
 
@@ -169,33 +162,26 @@ describe("Node", () => {
         let v = new NodeVerifier();
         await v.init("0");
 
+
         try {
-            await v.nodeFromWorker.join(gpuName, gpuVram);
+            await v.nodeFromWorker.join(gpuName, gpuVram, {value: ethers.parseEther("400")});
             assert.fail("Transaction not reverted");
         } catch (e) {
-            assert.match(e.toString(), /Not enough allowance to stake/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /Sender doesn't have enough funds to send tx/, "Wrong reason: " + e.toString());
         }
 
-        await v.approve("400");
-        try {
-            await v.nodeFromWorker.join(gpuName, gpuVram);
-            assert.fail("Transaction not reverted");
-        } catch (e) {
-            assert.match(e.toString(), /Not enough token to stake/, "Wrong reason: " + e.toString());
-        }
-
-        await v.cnxInstance.transfer(v.worker.address, ethers.parseUnits("400", "ether"));
+        await helpers.setBalance(v.worker.address, ethers.parseUnits("1000", "ether"));
 
         let status = await v.nodeFromWorker.getNodeStatus(v.worker.address);
         assert.equal(status, 0, "Node has joined.")
-        await v.nodeFromWorker.join(gpuName, gpuVram);
+        await expect(v.nodeFromWorker.join(gpuName, gpuVram, {value: ethers.parseEther("400")})).to.changeEtherBalance(
+            v.worker, ethers.parseEther("-400")
+        );
         status = await v.nodeFromWorker.getNodeStatus(v.worker.address);
         assert.equal(status, 1, "Node join failed.");
 
         const totalNodes = await v.netStatsInstance.totalNodes();
         assert.equal(totalNodes, 1, "Wrong number of nodes");
-        const balance = await v.cnxInstance.balanceOf(v.worker.address);
-        assert.equal(balance, 0, "Wrong number of tokens");
 
         const gpus = await v.nodeFromWorker.getAvailableGPUs();
         assert.equal(gpus.length, 1, "Wrong gpu number");
@@ -203,13 +189,13 @@ describe("Node", () => {
         assert.equal(gpus[0].vram, gpuVram, "Wrong gpu memory");
 
         try {
-            await v.nodeFromWorker.join(gpuName, gpuVram);
+            await v.nodeFromWorker.join(gpuName, gpuVram, {value: ethers.parseEther("400")});
             assert.fail("Transaction not reverted");
         } catch (e) {
             assert.match(e.toString(), /Node already joined/, "Wrong reason: " + e.toString());
         }
 
-        await v.nodeFromWorker.quit();
+        await expect(v.nodeFromWorker.quit()).to.changeEtherBalance(v.worker, ethers.parseEther("400"));
         status = await v.nodeFromWorker.getNodeStatus(v.worker);
         assert.equal(status, 0n, "Node quit failed.")
 
@@ -218,8 +204,6 @@ describe("Node", () => {
 
         const restGpus = await v.nodeFromWorker.getAvailableGPUs();
         assert.equal(restGpus.length, 0, "Wrong gpu number");
-        const balanceRet = await v.cnxInstance.balanceOf(v.worker.address);
-        assert.equal(balanceRet, ethers.parseUnits("400", "ether"), "Wrong number of tokens");
 
         try {
             await v.nodeFromWorker.quit();
@@ -234,9 +218,8 @@ describe("Node", () => {
         const gpuVram = 8
 
         let v = new NodeVerifier();
-        await v.init("400");
-        await v.approve("400");
-        await v.nodeFromWorker.join(gpuName, gpuVram);
+        await v.init("1000");
+        await v.nodeFromWorker.join(gpuName, gpuVram, {value: ethers.parseEther("400")});
 
         let totalNodes = await v.netStatsInstance.totalNodes();
         assert.equal(totalNodes, 1, "Wrong number of nodes");
@@ -293,16 +276,13 @@ describe("Node", () => {
         const gpuVrams = [8, 8, 8, 8, 16, 24];
 
         let v = new NodeVerifier();
-        await v.init("400");
-        await v.approve("400");
+        await v.init("1000");
         const accounts = await ethers.getSigners(8);
 
         for (let i = 0; i < 6; i++) {
             noder = accounts[i+2];
-            await v.cnxInstance.transfer(noder.address, ethers.parseUnits("400", "ether"));
-            await v.cnxInstance.connect(noder).approve(
-                v.nodeFromTask.target, ethers.parseUnits("400", "ether"));
-            await v.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
+            await helpers.setBalance(noder.address, ethers.parseEther("1000"))
+            await v.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i], {value: ethers.parseEther("400")});
         }
 
         let totalNodes = await v.netStatsInstance.totalNodes();
@@ -342,7 +322,7 @@ describe("Node", () => {
         assert.equal(status, 2, "Wrong sample node by gpu id");
 
         // test node quit
-        let nodeContract = await v.nodeFromTask.connect(accounts[7])
+        let nodeContract = v.nodeFromTask.connect(accounts[7])
         await nodeContract.quit();
         try {
             await v.nodeFromTask.randomSelectNodes(1, 24, false, seed);
@@ -369,18 +349,14 @@ describe("Node", async () => {
         const gpuVrams = [8, 16, 16];
 
         let v = new NodeVerifier();
-        await v.init("400");
-        await v.approve("400");
+        await v.init("1000");
         const accounts = await ethers.getSigners(6);
 
         for (let i = 0; i < 3; i++) {
             const noder = accounts[i + 2];
 
-            await v.cnxInstance.transfer(noder.address, ethers.parseUnits("400", "ether"));
-            await v.cnxInstance.connect(noder).approve(
-                v.nodeFromTask.target, ethers.parseUnits("400", "ether"));
-
-            await v.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
+            await helpers.setBalance(noder.address, ethers.parseUnits("1000", "ether"));
+            await v.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i], {value: ethers.parseEther("400")});
         }
 
         let nodes = await v.nodeFromTask.selectNodesWithRoot(accounts[4].address, 3);
@@ -388,11 +364,9 @@ describe("Node", async () => {
         assert.include(nodes, accounts[3].address, "Wrong selected nodes");
         assert.include(nodes, accounts[4].address, "Wrong selected nodes");
 
-        await v.cnxInstance.transfer(accounts[5].address, ethers.parseUnits("400", "ether"));
-        await v.cnxInstance.connect(accounts[5]).approve(
-            v.nodeFromTask.target, ethers.parseUnits("400", "ether"));
+        await helpers.setBalance(accounts[5].address, ethers.parseUnits("1000", "ether"));
 
-        await v.nodeFromTask.connect(accounts[5]).join("NVIDIA GeForce GTX 4060", 16);
+        await v.nodeFromTask.connect(accounts[5]).join("NVIDIA GeForce GTX 4060", 16, {value: ethers.parseEther("400")});
 
         nodes = await v.nodeFromTask.selectNodesWithRoot(accounts[4].address, 3);
         assert.include(nodes, accounts[3].address, "Wrong selected nodes");
@@ -412,17 +386,13 @@ describe("Node", async () => {
         const gpuVrams = [8, 64, 16, 16];
         let v = new NodeVerifier();
         await v.init("400");
-        await v.approve("400");
         const accounts = await ethers.getSigners(7);
 
         for (let i = 0; i < 4; i++) {
             const noder = accounts[i+2];
 
-            await v.cnxInstance.transfer(noder.address, ethers.parseUnits("400", "ether"));
-            await v.cnxInstance.connect(noder).approve(
-                v.nodeFromTask.target, ethers.parseUnits("400", "ether"));
-
-            await v.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i]);
+            await helpers.setBalance(noder.address, ethers.parseUnits("1000", "ether"));
+            await v.nodeFromTask.connect(noder).join(gpuNames[i], gpuVrams[i], {value: ethers.parseEther("400")});
         }
 
         nodes = await v.nodeFromTask.selectNodesWithRoot(accounts[2].address, 3);
@@ -519,25 +489,21 @@ describe("Node", () => {
     it("should behave correctly in status 0 with enough token", async() => {
         let v = new NodeVerifier();
         await v.init("1000")
-        await v.checkNode(false, 0n, "1000");
+        await v.checkNode(false, 0n);
         // QUIT -> Pause
-        await v.checkPause(false, false, 0n, "1000");
+        await v.checkPause(false, false, 0n);
         // QUIT -> Resume
-        await v.checkResume(false, false, 0n, "1000");
+        await v.checkResume(false, false, 0n);
         // QUIT -> Slash
-        await v.checkSlash(false, false, 0n, "1000");
+        await v.checkSlash(false, false, 0n);
         // QUIT -> StartTask
-        await v.checkStartTask(false, false, 0n, "1000");
+        await v.checkStartTask(false, false, 0n);
         // QUIT -> FinishTask
-        await v.checkFinishTask(false, false, 0n, "1000");
+        await v.checkFinishTask(false, false, 0n);
         // QUIT -> Quit
-        await v.checkQuit(false, false, 0n, "1000");
+        await v.checkQuit(false, false, 0n);
         // QUIT -> Join
-        await v.checkJoin(false, false, 0n, "1000", /Not enough allowance to stake/);
-        await v.approve("100");
-        await v.checkJoin(false, false, 0n, "1000", /Not enough allowance to stake/);
-        await v.approve("500");
-        await v.checkJoin(true, true, 1n, "600", null);
+        await v.checkJoin(true, true, 1n, null);
     })
 })
 
@@ -545,24 +511,23 @@ describe("Node", () => {
     it("should behave correctly in status 0 without enough token", async() => {
         let v = new NodeVerifier()
         await v.init("100")
-        await v.checkNode(false, 0n, "100");
+        await v.checkNode(false, 0n);
         // QUIT -> Pause
-        await v.checkPause(false, false, 0n, "100");
+        await v.checkPause(false, false, 0n);
         // QUIT -> Resume
-        await v.checkResume(false, false, 0n, "100");
+        await v.checkResume(false, false, 0n);
         // QUIT -> Slash
-        await v.checkSlash(false, false, 0n, "100");
+        await v.checkSlash(false, false, 0n);
         // QUIT -> StartTask
-        await v.checkStartTask(false, false, 0n, "100");
+        await v.checkStartTask(false, false, 0n);
         // QUIT -> FinishTask
-        await v.checkFinishTask(false, false, 0n, "100");
+        await v.checkFinishTask(false, false, 0n);
         // QUIT -> Quit
-        await v.checkQuit(false, false, 0n, "100");
+        await v.checkQuit(false, false, 0n);
         // QUIT -> Join without enough staken allowance
-        await v.checkJoin(false, false, 0n, "100", /Not enough allowance to stake/);
-        await v.approve("500");
+        await v.checkJoin(false, false, 0n, /Sender doesn't have enough funds to send tx/);
         // QUIT -> Join with enough staken allowance
-        await v.checkJoin(false, false, 0n, "100", /Not enough token to stake/);
+        await v.checkJoin(false, false, 0n, /Sender doesn't have enough funds to send tx/);
     })
 })
 
@@ -571,24 +536,23 @@ describe("Node", () => {
     it("should behave correctly in status 1", async() => {
         let v = new NodeVerifier();
         await v.init("500");
-        await v.checkNode(false, 0n, "500");
-        await v.approve("400");
-        await v.checkJoin(true, true, 1n, "100", null);
+        await v.checkNode(false, 0n);
+        await v.checkJoin(true, true, 1n, null);
         // AVAILABLE -> Join
-        await v.checkJoin(false, true, 1n, "100", /Node already joined/);
+        await v.checkJoin(false, true, 1n, /Node already joined/);
         // AVAILABLE -> Resume
-        await v.checkResume(false, true, 1n, "100");
+        await v.checkResume(false, true, 1n);
         // AVAILABLE -> Pause
-        await v.checkPause(true, true, 5n, "100");
-        await v.checkResume(true, true, 1n, "100");
+        await v.checkPause(true, true, 5n);
+        await v.checkResume(true, true, 1n);
         // AVAILABLE -> StartTask
-        await v.checkStartTask(true, true, 2n, "100");
-        await v.checkFinishTask(true, true, 1n, "100");
+        await v.checkStartTask(true, true, 2n);
+        await v.checkFinishTask(true, true, 1n);
         // AVAILABLE -> FinishTask
-        await v.checkFinishTask(false, true, 1n, "100");
+        await v.checkFinishTask(false, true, 1n);
         // AVAILABLE -> Slash
-        await v.checkSlash(false, true, 1n, "100");
+        await v.checkSlash(false, true, 1n);
         // AVAILABLE -> Quit
-        await v.checkQuit(false, true, 1n, "100");
+        await v.checkQuit(false, true, 1n);
     })
 })
