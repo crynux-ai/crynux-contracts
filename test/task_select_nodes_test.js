@@ -9,9 +9,7 @@ describe("Task", async () => {
         let v = new Verifier();
         await v.init();
 
-        await v.cnxInstance.transfer(v.user, ethers.parseUnits("600", "ether"));
-        await v.cnxInstance.connect(v.user).approve(
-            v.taskInstance.target, ethers.parseUnits("600", "ether"));
+        await helpers.setBalance(v.user.address, ethers.parseEther("600"));
 
         const taskType = 0;
         const taskHash = ethers.solidityPackedKeccak256(["string"], ["task hash"]);
@@ -24,8 +22,8 @@ describe("Task", async () => {
             [8, 16, 16]
         );
 
-        let contract =  await v.taskInstance.connect(v.user);
-        let tx = contract.createTask(taskType, taskHash, dataHash, 8, taskFee, cap);
+        let contract =  v.taskInstance.connect(v.user);
+        let tx = await contract.createTask(taskType, taskHash, dataHash, 8, cap, {value: taskFee});
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[0].address, anyValue, anyValue, anyValue);
         await expect(tx).emit(contract, "TaskStarted").withArgs(
@@ -33,7 +31,7 @@ describe("Task", async () => {
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[2].address, anyValue, anyValue, anyValue);
 
-        tx = await (await tx).wait();
+        tx = await tx.wait();
         let logs = tx.logs.filter((x) => x.constructor.name == "EventLog");
         let taskId = logs[0].args.taskId;
 
@@ -45,7 +43,7 @@ describe("Task", async () => {
             await v.taskInstance.connect(noder[0]).reportTaskError(taskId, round);
         }
 
-        tx = contract.createTask(taskType, taskHash, dataHash, 0, taskFee, cap);
+        tx = contract.createTask(taskType, taskHash, dataHash, 0, cap, {value: taskFee});
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[0].address, anyValue, anyValue, anyValue);
         await expect(tx).emit(contract, "TaskStarted").withArgs(
@@ -75,10 +73,7 @@ describe("Task", async () => {
         let v = new Verifier();
         await v.init();
 
-
-        await v.cnxInstance.transfer(v.user, ethers.parseUnits("600", "ether"));
-        await v.cnxInstance.connect(v.user).approve(
-            v.taskInstance.target, ethers.parseUnits("600", "ether"));
+        await helpers.setBalance(v.user.address, ethers.parseEther("600"));
 
         const taskType = 1;
         const taskHash = ethers.solidityPackedKeccak256(["string"], ["task hash"]);
@@ -93,8 +88,8 @@ describe("Task", async () => {
 
         await v.prepareNode(v.accounts[3], "NVIDIA GeForce RTX 4060 Ti", 16);
 
-        let contract = await v.taskInstance.connect(v.user);
-        let tx = contract.createTask(taskType, taskHash, dataHash, 8, taskFee, cap);
+        let contract = v.taskInstance.connect(v.user);
+        let tx = await contract.createTask(taskType, taskHash, dataHash, 8, cap, {value: taskFee});
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[1].address, anyValue, anyValue, anyValue);
         await expect(tx).emit(contract, "TaskStarted").withArgs(
@@ -102,7 +97,7 @@ describe("Task", async () => {
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[3].address, anyValue, anyValue, anyValue);
 
-        tx = await (await tx).wait();
+        tx = await tx.wait();
         let logs = tx.logs.filter((x) => x.constructor.name == "EventLog");
         let taskId = logs[0].args.taskId;
         // cancel task
@@ -114,7 +109,7 @@ describe("Task", async () => {
         }
 
 
-        tx = await contract.createTask(taskType, taskHash, dataHash, 8, taskFee, cap);
+        tx = await contract.createTask(taskType, taskHash, dataHash, 8, cap, {value: taskFee});
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[1].address, anyValue, anyValue, anyValue);
         await expect(tx).emit(contract, "TaskStarted").withArgs(
@@ -122,8 +117,7 @@ describe("Task", async () => {
         await expect(tx).emit(contract, "TaskStarted").withArgs(
             anyValue, anyValue, anyValue, v.accounts[3].address, anyValue, anyValue, anyValue);
 
-
-        tx = await (await tx).wait();
+        tx = await tx.wait();
         logs = tx.logs.filter((x) => x.constructor.name == "EventLog");
         taskId = logs[0].args.taskId;
         // cancel task

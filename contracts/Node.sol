@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.18;
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -30,7 +29,6 @@ contract Node is Ownable {
     uint private NODE_STATUS_PENDING_QUIT = 4;
     uint private NODE_STATUS_PAUSED = 5;
 
-    IERC20 private cnxToken;
     QOS private qos;
     NetworkStats private netStats;
 
@@ -48,6 +46,9 @@ contract Node is Ownable {
 
     event NodeSlashed(address nodeAddress);
     event NodeKickedOut(address nodeAddress);
+
+    // store nodes staked eth amount
+    mapping(address => uint) private stakedAmount;
 
     // store all nodes info
     EnumerableSet.AddressSet private allNodes;
@@ -67,8 +68,7 @@ contract Node is Ownable {
 
     Random.Generator private generator;
 
-    constructor(IERC20 tokenInstance, QOS qosInstance, NetworkStats netStatsInstance) {
-        cnxToken = tokenInstance;
+    constructor(QOS qosInstance, NetworkStats netStatsInstance) {
         qos = qosInstance;
         netStats = netStatsInstance;
     }
@@ -153,7 +153,7 @@ contract Node is Ownable {
         netStats.nodeQuit();
     }
 
-    function join(string calldata gpuName, uint gpuVram) public {
+    function join(string calldata gpuName, uint gpuVram) payable public {
         require(allNodes.length() < maxNodesAllowed, "Network is full");
         require(
             getNodeStatus(msg.sender) == NODE_STATUS_QUIT,
@@ -161,26 +161,9 @@ contract Node is Ownable {
         );
 
         // Check the staking
-        require(
-            cnxToken.allowance(msg.sender, address(this)) >=
-                requiredStakeAmount,
-            "Not enough allowance to stake"
-        );
-
-        require(
-            cnxToken.balanceOf(msg.sender) >= requiredStakeAmount,
-            "Not enough token to stake"
-        );
-
-        // Transfer the tokens
-        require(
-            cnxToken.transferFrom(
-                msg.sender,
-                address(this),
-                requiredStakeAmount
-            ),
-            "Token transfer failed"
-        );
+        uint token = msg.value;
+        require(token >= requiredStakeAmount, "Staked amount is not enough");
+        stakedAmount[msg.sender] = token;
 
         // add nodes to nodesMap
         bytes32 gpuID = keccak256(abi.encodePacked(gpuName, gpuVram));
@@ -216,10 +199,10 @@ contract Node is Ownable {
             removeNode(msg.sender);
 
             // Return the staked tokens
-            require(
-                cnxToken.transfer(msg.sender, requiredStakeAmount),
-                "Token transfer failed"
-            );
+            uint token = stakedAmount[msg.sender];
+            stakedAmount[msg.sender] = 0;
+            (bool success, ) = msg.sender.call{value: token}("");
+            require(success, "Token transfer failed");
         } else if (nodeStatus == NODE_STATUS_BUSY) {
             setNodeStatus(msg.sender, NODE_STATUS_PENDING_QUIT);
         } else {
@@ -263,11 +246,10 @@ contract Node is Ownable {
             "Illegal node status"
         );
 
-        // Transfer the staked tokens to the root
-        require(
-            cnxToken.transfer(owner(), requiredStakeAmount),
-            "Token transfer failed"
-        );
+        uint token = stakedAmount[nodeAddress];
+        stakedAmount[nodeAddress] = 0;
+        (bool success, ) = owner().call{value: token}("");
+        require(success, "Token transfer failed");
 
         qos.finishTask(nodeAddress);
         qos.kickout(nodeAddress);
@@ -311,10 +293,10 @@ contract Node is Ownable {
         if (qos.shouldKickOut(nodeAddress)) {
             qos.kickout(nodeAddress);
             removeNode(nodeAddress);
-            require(
-                cnxToken.transfer(nodeAddress, requiredStakeAmount),
-                "Token transfer failed"
-            );
+            uint token = stakedAmount[nodeAddress];
+            stakedAmount[nodeAddress] = 0;
+            (bool success, ) = nodeAddress.call{value: token}("");
+            require(success, "Token transfer failed");
             emit NodeKickedOut(nodeAddress);
             return;
         }
@@ -333,11 +315,10 @@ contract Node is Ownable {
             // Remove the node from the list
             removeNode(nodeAddress);
 
-            // Return the staked tokens
-            require(
-                cnxToken.transfer(nodeAddress, requiredStakeAmount),
-                "Token transfer failed"
-            );
+            uint token = stakedAmount[nodeAddress];
+            stakedAmount[nodeAddress] = 0;
+            (bool success, ) = nodeAddress.call{value: token}("");
+            require(success, "Token transfer failed");
         } else if (nodeStatus == NODE_STATUS_PENDING_PAUSE) {
             setNodeStatus(nodeAddress, NODE_STATUS_PAUSED);
         }

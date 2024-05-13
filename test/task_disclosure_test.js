@@ -1,7 +1,8 @@
 const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { Verifier } = require("./utils");
+const { Verifier, getGasCost } = require("./utils");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { ethers } = require("hardhat");
 
 
 describe("Task", () => {
@@ -15,7 +16,7 @@ describe("Task", () => {
         await v.prepareNetwork();
         await v.prepareUser(v.user);
 
-        const [taskId, nodeRounds] = await v.prepareTask(v.user, v.accounts);
+        const [taskId, nodeRounds, , ] = await v.prepareTask(v.user, v.accounts);
 
         try {
             await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
@@ -65,21 +66,24 @@ describe("Task", () => {
             "0xfcd29a0c1f1a1c9bb4b8bbb6d5124a29b9d416343993836f8f87f7699830a499e59ca34cb4691cf2f2c391276149cfb2"
         ];
 
+        const nodeBalances = [];
+
+        for(let i= 0; i < 3; i++) {
+            const bal = await ethers.provider.getBalance(v.accounts[i]);
+            nodeBalances.push(bal);
+        }
+
+        const nodeGasCosts = [BigInt("0"), BigInt("0"), BigInt("0")];
+
         for(let i=0; i<3; i++) {
             const [commitment, nonce] = await v.getCommitment(results[i]);
-            await v.taskInstance.connect(v.accounts[i]).submitTaskResultCommitment(
+            const tx = await v.taskInstance.connect(v.accounts[i]).submitTaskResultCommitment(
                 taskId,
                 nodeRounds[v.accounts[i].address],
                 commitment,
                 nonce,
             );
-        }
-
-        const nodeBalances = [];
-
-        for(let i= 0; i < 3; i++) {
-            const bal = await v.cnxInstance.balanceOf(v.accounts[i]);
-            nodeBalances.push(bal);
+            nodeGasCosts[i] += await getGasCost(tx);
         }
 
         try {
@@ -94,8 +98,8 @@ describe("Task", () => {
         }
 
         // Set the quit and paused status to the first and second node
-        await v.nodeInstance.connect(v.accounts[0]).pause();
-        await v.nodeInstance.connect(v.accounts[1]).quit();
+        nodeGasCosts[0] += await getGasCost(await v.nodeInstance.connect(v.accounts[0]).pause());
+        nodeGasCosts[1] += await getGasCost(await v.nodeInstance.connect(v.accounts[1]).quit());
 
         let node0Status = await v.nodeInstance.getNodeStatus(v.accounts[0]);
         assert.equal(node0Status, 3, "wrong node status for node 0");
@@ -103,45 +107,46 @@ describe("Task", () => {
         let node1Status = await v.nodeInstance.getNodeStatus(v.accounts[1]);
         assert.equal(node1Status, 4, "wrong node status for node 1");
 
-        await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[0].address],
             results[0],
-        );
+        ));
 
-        const taskContract = await v.taskInstance.connect(v.accounts[1]);
-        const tx = taskContract.discloseTaskResult(taskId,
+        const taskContract = v.taskInstance.connect(v.accounts[1]);
+        const tx = await taskContract.discloseTaskResult(taskId,
             nodeRounds[v.accounts[1].address],
             results[1],
         );
+        nodeGasCosts[1] += await getGasCost(tx);
         await expect(tx).emit(taskContract, "TaskSuccess").withArgs(
             taskId, anyValue, anyValue);
 
         node1Status = await v.nodeInstance.getNodeStatus(v.accounts[1]);
         assert.equal(node1Status, 0, "wrong node status for node 1");
-        let bal = await v.cnxInstance.balanceOf(v.accounts[1]);
-        let expectedBalance = nodeBalances[1] + ethers.parseUnits("418", "ether");
+        let bal = await ethers.provider.getBalance(v.accounts[1]);
+        let expectedBalance = nodeBalances[1] + ethers.parseUnits("418", "ether") - nodeGasCosts[1];
         assert.equal(bal, expectedBalance, "Task fee not received")
 
         const availableNodes = await v.netstatsInstance.availableNodes();
         assert.equal(availableNodes, 0, "Wrong number of available nodes");
 
-        await v.taskInstance.connect(v.accounts[0]).reportResultsUploaded(
-            taskId, nodeRounds[v.accounts[0].address]);
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).reportResultsUploaded(
+            taskId, nodeRounds[v.accounts[0].address]));
         node0Status = await v.nodeInstance.getNodeStatus(v.accounts[0]);
         assert.equal(node0Status, 5, "wrong node status for node 2");
-        bal = await v.cnxInstance.balanceOf(v.accounts[0]);
-        expectedBalance = nodeBalances[0] + ethers.parseUnits("20", "ether");
+        bal = await ethers.provider.getBalance(v.accounts[0]);
+        expectedBalance = nodeBalances[0] + ethers.parseUnits("20", "ether") - nodeGasCosts[0];
         assert.equal(bal, expectedBalance, "Task fee not received")
 
-        await v.taskInstance.connect(v.accounts[2]).discloseTaskResult(
+        nodeGasCosts[2] += await getGasCost(await v.taskInstance.connect(v.accounts[2]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[2].address],
             results[2],
-        );
+        ));
 
-        bal = await v.cnxInstance.balanceOf(v.accounts[2].address);
-        expectedBalance = nodeBalances[2] + ethers.parseUnits("12", "ether");
+        bal = await ethers.provider.getBalance(v.accounts[2].address);
+        expectedBalance = nodeBalances[2] + ethers.parseUnits("12", "ether") - nodeGasCosts[2];
         assert.equal(bal, expectedBalance, "Task fee not received");
 
         const availableNodesAfter = await v.netstatsInstance.availableNodes();
@@ -168,50 +173,54 @@ describe("Task", () => {
         const availableNodesStart = await v.netstatsInstance.availableNodes();
         assert.equal(availableNodesStart, 3, "Wrong number of available nodes");
 
-        const [taskId, nodeRounds] = await v.prepareTask(v.user, v.accounts);
+        const [taskId, nodeRounds, , ] = await v.prepareTask(v.user, v.accounts);
+
+        const userBalance = await ethers.provider.getBalance(v.user);
 
         const result = "0x01020304050607080807060504030201";
         const cheatingResult = "0x01020304050607171707060504030201"
 
+        const nodeBalances = [];
+
+        for(let i= 0; i < 3; i++) {
+            const bal = await ethers.provider.getBalance(v.accounts[i]);
+            nodeBalances.push(bal);
+        }
+
+        const nodeGasCosts = [BigInt("0"), BigInt("0"), BigInt("0")];
+
         for(let i= 0; i < 2; i++) {
             const [commitment, nonce] = await v.getCommitment(result);
-            await v.taskInstance.connect(v.accounts[i]).submitTaskResultCommitment(
+            const tx = await v.taskInstance.connect(v.accounts[i]).submitTaskResultCommitment(
                 taskId,
                 nodeRounds[v.accounts[i].address],
                 commitment,
                 nonce,
             );
+            nodeGasCosts[i] += await getGasCost(tx);
         }
 
         const [commitment, nonce] = await v.getCommitment(cheatingResult);
-        await v.taskInstance.connect(v.accounts[2]).submitTaskResultCommitment(
+        nodeGasCosts[2] += await getGasCost(await v.taskInstance.connect(v.accounts[2]).submitTaskResultCommitment(
             taskId,
             nodeRounds[v.accounts[2].address],
             commitment,
             nonce,
-        );
+        ));
 
-        const nodeBalances = [];
-
-        for(let i= 0; i < 3; i++) {
-            const bal = await v.cnxInstance.balanceOf(v.accounts[i]);
-            nodeBalances.push(bal);
-        }
-
-        const userBalance = await v.cnxInstance.balanceOf(v.user);
-
-        await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[0].address],
             result,
-        );
+        ));
 
         const contract = v.taskInstance.connect(v.accounts[1]);
-        const tx = contract.discloseTaskResult(
+        const tx = await contract.discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[1].address],
             result,
         );
+        nodeGasCosts[1] += await getGasCost(tx);
         await expect(tx).emit(contract, "TaskSuccess").withArgs(
             taskId, anyValue, anyValue);
 
@@ -224,11 +233,11 @@ describe("Task", () => {
         const cheatingNodeTaskId = await v.taskInstance.getNodeTask(v.accounts[2]);
         assert.equal(taskId, cheatingNodeTaskId, "incorrect node task");
 
-        await v.taskInstance.connect(v.accounts[2]).discloseTaskResult(
+        nodeGasCosts[2] += await getGasCost(await v.taskInstance.connect(v.accounts[2]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[2].address],
             cheatingResult,
-        );
+        ));
 
         const availableNodesAfterSlash = await v.netstatsInstance.availableNodes();
         assert.equal(availableNodesAfterSlash, 1, "Node not slashed");
@@ -236,15 +245,15 @@ describe("Task", () => {
         let taskInfo = await v.taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
-        await v.taskInstance.connect(v.accounts[0]).reportResultsUploaded(
-            taskId, nodeRounds[v.accounts[0].address]);
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).reportResultsUploaded(
+            taskId, nodeRounds[v.accounts[0].address]));
         const availableNodesAfterSuccess = await v.netstatsInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node not slashed");
 
         taskInfo = await v.taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, '0', "task not deleted");
 
-        const userBalanceAfter = await v.cnxInstance.balanceOf(v.user);
+        const userBalanceAfter = await ethers.provider.getBalance(v.user);
 
         assert.equal(
             userBalanceAfter,
@@ -252,23 +261,23 @@ describe("Task", () => {
             "task fee not returned"
         );
 
-        let bal = await v.cnxInstance.balanceOf(v.accounts[0]);
+        let bal = await ethers.provider.getBalance(v.accounts[0]);
         assert.equal(
             bal,
-            nodeBalances[0] + ethers.parseUnits("20", "ether"),
+            nodeBalances[0] + ethers.parseUnits("20", "ether") - nodeGasCosts[0],
             "task fee not paid"
         );
-        bal = await v.cnxInstance.balanceOf(v.accounts[1]);
+        bal = await ethers.provider.getBalance(v.accounts[1]);
         assert.equal(
             bal,
-            nodeBalances[1] + ethers.parseUnits("18", "ether"),
+            nodeBalances[1] + ethers.parseUnits("18", "ether") - nodeGasCosts[1],
             "task fee not paid"
         );
 
-        const slashedNodeBalance = await v.cnxInstance.balanceOf(v.accounts[2]);
+        const slashedNodeBalance = await ethers.provider.getBalance(v.accounts[2]);
         assert.equal(
-            nodeBalances[2],
             slashedNodeBalance,
+            nodeBalances[2] - nodeGasCosts[2],
             "slashed node still paid"
         );
 
@@ -289,51 +298,55 @@ describe("Task", () => {
         const result = "0x01020304050607080807060504030201";
         const cheatingResult = "0x01020304050607171707060504030201"
 
-        for(let i = 1; i < 3; i++) {
-            const [commitment, nonce] = await v.getCommitment(result);
-            await v.taskInstance.connect(v.accounts[i]).submitTaskResultCommitment(
-                taskId,
-                nodeRounds[v.accounts[i].address],
-                commitment,
-                nonce,
-            );
-        }
-
-        const [commitment, nonce] = await v.getCommitment(cheatingResult);
-        await v.taskInstance.connect(v.accounts[0]).submitTaskResultCommitment(
-            taskId,
-            nodeRounds[v.accounts[0].address],
-            commitment,
-            nonce,
-        );
+        const userBalance = await ethers.provider.getBalance(v.user);
 
         const nodeBalances = [];
 
         for(let i= 0; i < 3; i++) {
-            const bal = await v.cnxInstance.balanceOf(v.accounts[i]);
+            const bal = await ethers.provider.getBalance(v.accounts[i]);
             nodeBalances.push(bal);
         }
 
-        const userBalance = await v.cnxInstance.balanceOf(v.user);
+        const nodeGasCosts = [BigInt("0"), BigInt("0"), BigInt("0")];
 
-        await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
+        for(let i = 1; i < 3; i++) {
+            const [commitment, nonce] = await v.getCommitment(result);
+            nodeGasCosts[i] += await getGasCost(await v.taskInstance.connect(v.accounts[i]).submitTaskResultCommitment(
+                taskId,
+                nodeRounds[v.accounts[i].address],
+                commitment,
+                nonce,
+            ));
+        }
+
+        const [commitment, nonce] = await v.getCommitment(cheatingResult);
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).submitTaskResultCommitment(
+            taskId,
+            nodeRounds[v.accounts[0].address],
+            commitment,
+            nonce,
+        ));
+
+
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[0].address],
             cheatingResult,
-        );
+        ));
 
-        await v.taskInstance.connect(v.accounts[1]).discloseTaskResult(
+        nodeGasCosts[1] += await getGasCost(await v.taskInstance.connect(v.accounts[1]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[1].address],
             result,
-        );
+        ));
 
-        const contract = await v.taskInstance.connect(v.accounts[2]);
-        const tx = contract.discloseTaskResult(
+        const contract = v.taskInstance.connect(v.accounts[2]);
+        const tx = await contract.discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[2].address],
             result,
         );
+        nodeGasCosts[2] += await getGasCost(tx);
         await expect(tx).emit(contract, "TaskSuccess").withArgs(
             taskId, anyValue, anyValue);
 
@@ -343,15 +356,15 @@ describe("Task", () => {
         let taskInfo = await v.taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
-        await v.taskInstance.connect(v.accounts[1]).reportResultsUploaded(
-            taskId, nodeRounds[v.accounts[1].address]);
+        nodeGasCosts[1] += await getGasCost(await v.taskInstance.connect(v.accounts[1]).reportResultsUploaded(
+            taskId, nodeRounds[v.accounts[1].address]));
         const availableNodesAfterSuccess = await v.netstatsInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node free");
 
         taskInfo = await v.taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, '0', "task not deleted");
 
-        const userBalanceAfter = await v.cnxInstance.balanceOf(v.user);
+        const userBalanceAfter = await ethers.provider.getBalance(v.user);
 
         assert.equal(
             userBalanceAfter,
@@ -359,22 +372,22 @@ describe("Task", () => {
             "task fee not returned"
         );
 
-        let bal = await v.cnxInstance.balanceOf(v.accounts[1]);
+        let bal = await ethers.provider.getBalance(v.accounts[1]);
         assert.equal(
             bal,
-            nodeBalances[1] + ethers.parseUnits("19", "ether"),
+            nodeBalances[1] + ethers.parseUnits("19", "ether") - nodeGasCosts[1],
             "task fee not paid"
         );
-        bal = await v.cnxInstance.balanceOf(v.accounts[2]);
+        bal = await ethers.provider.getBalance(v.accounts[2]);
         assert.equal(
             bal,
-            nodeBalances[2] + ethers.parseUnits("15", "ether"),
+            nodeBalances[2] + ethers.parseUnits("15", "ether") - nodeGasCosts[2],
             "task fee not paid"
         );
 
-        const slashedNodeBalance = await v.cnxInstance.balanceOf(v.accounts[0]);
+        const slashedNodeBalance = await ethers.provider.getBalance(v.accounts[0]);
         assert.equal(
-            nodeBalances[0],
+            nodeBalances[0] - nodeGasCosts[0],
             slashedNodeBalance,
             "slashed node still paid"
         );
@@ -396,57 +409,60 @@ describe("Task", () => {
         const result = "0x01020304050607080807060504030201";
         const cheatingResult = "0x01020304050607171707060504030201"
 
+        const nodeBalances = [];
+
+        for(let i= 0; i < 3; i++) {
+            const bal = await ethers.provider.getBalance(v.accounts[i]);
+            nodeBalances.push(bal);
+        }
+
+        const userBalance = await ethers.provider.getBalance(v.user);
+
+        const nodeGasCosts = [BigInt("0"), BigInt("0"), BigInt("0")];
+
         const [commitment1, nonce1] = await v.getCommitment(result);
-        await v.taskInstance.connect(v.accounts[0]).submitTaskResultCommitment(
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).submitTaskResultCommitment(
             taskId,
             nodeRounds[v.accounts[0].address],
             commitment1,
             nonce1,
-        );
+        ));
 
         const [commitment2, nonce2] = await v.getCommitment(cheatingResult);
-        await v.taskInstance.connect(v.accounts[1]).submitTaskResultCommitment(
+        nodeGasCosts[1] += await getGasCost(await v.taskInstance.connect(v.accounts[1]).submitTaskResultCommitment(
             taskId,
             nodeRounds[v.accounts[1].address],
             commitment2,
             nonce2,
-        );
+        ));
 
         const [commitment3, nonce3] = await v.getCommitment(result);
-        await v.taskInstance.connect(v.accounts[2]).submitTaskResultCommitment(
+        nodeGasCosts[2] += await getGasCost(await v.taskInstance.connect(v.accounts[2]).submitTaskResultCommitment(
             taskId,
             nodeRounds[v.accounts[2].address],
             commitment3,
             nonce3,
-        );
+        ));
 
-        const nodeBalances = [];
-
-        for(let i= 0; i < 3; i++) {
-            const bal = await v.cnxInstance.balanceOf(v.accounts[i]);
-            nodeBalances.push(bal);
-        }
-
-        const userBalance = await v.cnxInstance.balanceOf(v.user);
-
-        await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[0].address],
             result,
-        );
+        ));
 
-        await v.taskInstance.connect(v.accounts[1]).discloseTaskResult(
+        nodeGasCosts[1] += await getGasCost(await v.taskInstance.connect(v.accounts[1]).discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[1].address],
             cheatingResult,
-        );
+        ));
 
-        const contract = await v.taskInstance.connect(v.accounts[2]);
-        const tx = contract.discloseTaskResult(
+        const contract = v.taskInstance.connect(v.accounts[2]);
+        const tx = await contract.discloseTaskResult(
             taskId,
             nodeRounds[v.accounts[2].address],
             result,
         );
+        nodeGasCosts[2] += await getGasCost(tx);
         await expect(tx).emit(contract, "TaskSuccess").withArgs(
             taskId, anyValue, anyValue);
 
@@ -456,15 +472,15 @@ describe("Task", () => {
         let taskInfo = await v.taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, taskId, "task deleted");
 
-        await v.taskInstance.connect(v.accounts[0]).reportResultsUploaded(
-            taskId, nodeRounds[v.accounts[0].address]);
+        nodeGasCosts[0] += await getGasCost(await v.taskInstance.connect(v.accounts[0]).reportResultsUploaded(
+            taskId, nodeRounds[v.accounts[0].address]));
         const availableNodesAfterSuccess = await v.netstatsInstance.availableNodes();
         assert.equal(availableNodesAfterSuccess, 2, "Node free");
 
         taskInfo = await v.taskInstance.getTask(taskId);
         assert.equal(taskInfo.id, "0", "task not deleted");
 
-        const userBalanceAfter = await v.cnxInstance.balanceOf(v.user);
+        const userBalanceAfter = await ethers.provider.getBalance(v.user);
 
         assert.equal(
             userBalanceAfter,
@@ -472,24 +488,24 @@ describe("Task", () => {
             "task fee not returned"
         );
 
-        const bal1 = await v.cnxInstance.balanceOf(v.accounts[0]);
+        const bal1 = await ethers.provider.getBalance(v.accounts[0]);
         assert.equal(
             bal1,
-            nodeBalances[0] + ethers.parseUnits("20", "ether"),
+            nodeBalances[0] + ethers.parseUnits("20", "ether") - nodeGasCosts[0],
             "task fee not paid"
         );
 
-        const slashedNodeBalance = await v.cnxInstance.balanceOf(v.accounts[1]);
+        const slashedNodeBalance = await ethers.provider.getBalance(v.accounts[1]);
         assert.equal(
-            nodeBalances[1],
+            nodeBalances[1] - nodeGasCosts[1],
             slashedNodeBalance,
             "slashed node still paid"
         );
 
-        const bal2 = await v.cnxInstance.balanceOf(v.accounts[2]);
+        const bal2 = await ethers.provider.getBalance(v.accounts[2]);
         assert.equal(
             bal2,
-            nodeBalances[2] + ethers.parseUnits("12", "ether"),
+            nodeBalances[2] + ethers.parseUnits("12", "ether") - nodeGasCosts[2],
             "task fee not paid"
         );
 

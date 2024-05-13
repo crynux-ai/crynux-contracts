@@ -2,6 +2,7 @@ const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { Verifier } = require("./utils");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { ethers } = require("hardhat")
 
 
 describe("Task", () => {
@@ -18,27 +19,18 @@ describe("Task", () => {
         const cap = 1;
 
         try {
-            await v.taskInstance.connect(v.user).createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap);
+            await v.taskInstance.connect(v.user).createTask(taskType, taskHash, dataHash, vramLimit, cap, {value: taskFee});
             assert.fail('should not pass');
         } catch (e) {
-            assert.match(e.toString(), /Not enough tokens for task/, "Wrong reason: " + e.toString());
+            assert.match(e.toString(), /Sender doesn't have enough funds to send tx/, "Wrong reason: " + e.toString());
         }
 
-        await v.cnxInstance.transfer(v.user, ethers.parseUnits("600", "ether"));
-
-        try {
-            await v.taskInstance.connect(v.user).createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap);
-            assert.fail('should not pass');
-        } catch (e) {
-            assert.match(e.toString(), /Not enough allowance for task/, "Wrong reason: " + e.toString());
-        }
-
-        await v.cnxInstance.connect(v.user).approve(v.taskInstance.target, ethers.parseUnits("600", "ether"));
+        await helpers.setBalance(v.user.address, ethers.parseUnits("60", "ether"));
 
         await v.prepareNetwork();
 
         const taskContract = await v.taskInstance.connect(v.user);
-        const tx = taskContract.createTask(taskType, taskHash, dataHash, vramLimit, taskFee, cap);
+        const tx = taskContract.createTask(taskType, taskHash, dataHash, vramLimit, cap, {value: taskFee});
         await expect(tx).emit(taskContract, "TaskStarted").withArgs(
             anyValue, taskType, anyValue, v.accounts[0].address, anyValue, anyValue, anyValue);
         await expect(tx).emit(taskContract, "TaskStarted").withArgs(
