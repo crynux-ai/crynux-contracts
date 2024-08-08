@@ -257,6 +257,7 @@ contract Node is Ownable {
 
         qos.finishTask(nodeAddress);
         qos.kickout(nodeAddress);
+        netStats.nodeTaskFinished();
         // Remove the node from the list
         removeNode(nodeAddress);
         emit NodeSlashed(nodeAddress);
