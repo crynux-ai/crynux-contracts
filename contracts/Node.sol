@@ -79,6 +79,10 @@ contract Node is Ownable {
         return nodesMap[nodeAddress];
     }
 
+    function getStakedAmount(address nodeAddress) public view returns (uint) {
+        return stakedAmount[nodeAddress];
+    }
+
     function getAvailableGPUs() public view returns (GPUInfo[] memory) {
         uint length = _availableGPUIDSet.length();
         GPUInfo[] memory res = new GPUInfo[](length);
