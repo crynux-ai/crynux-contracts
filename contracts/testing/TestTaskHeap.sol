@@ -61,7 +61,8 @@ contract TestTaskHeap {
                 dataHash: bytes32(uint(2)),
                 vramLimit: 0,
                 taskFee: 100 * (i + 1),
-                price: 100 * (i + 1)
+                price: 100 * (i + 1),
+                gpuID: bytes32(0)
             });
 
             maxHeap.insert(task);
@@ -82,7 +83,8 @@ contract TestTaskHeap {
                 dataHash: bytes32(uint(2)),
                 vramLimit: 0,
                 taskFee: 100 * (6 - i),
-                price: 100 * (6 - i)
+                price: 100 * (6 - i),
+                gpuID: bytes32(0)
             });
 
             minHeap.insert(task);
