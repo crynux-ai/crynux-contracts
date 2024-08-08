@@ -13,6 +13,7 @@ contract Task is Ownable {
 
     uint private TASK_TYPE_SD = 0;
     uint private TASK_TYPE_LLM = 1;
+    uint private TASK_TYPE_SD_FT = 2;
 
     struct TaskInfo {
         uint256 id;
@@ -98,12 +99,17 @@ contract Task is Ownable {
         bytes32 taskHash,
         bytes32 dataHash,
         uint vramLimit,
-        uint cap
+        uint cap,
+        string calldata gpuName,
+        uint gpuVram
     ) payable public {
         require(
-            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM,
+            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM || taskType == TASK_TYPE_SD_FT,
             "Invalid task type"
         );
+        if (taskType == TASK_TYPE_SD_FT) {
+            require(bytes(gpuName).length > 0, "GPU name is empty");
+        }
         uint taskFee = msg.value;
 
         TaskInfo memory taskInfo;
@@ -126,12 +132,15 @@ contract Task is Ownable {
         bytes32 seed = keccak256(
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
         );
+        bool useSameGPU = taskType == TASK_TYPE_LLM || bytes(gpuName).length > 0;
         try
             node.randomSelectNodes(
                 3,
                 vramLimit,
-                taskType == TASK_TYPE_LLM,
-                seed
+                useSameGPU,
+                seed,
+                gpuName,
+                gpuVram
             )
         returns (address[] memory nodeAddresses) {
             emit TaskPending(
@@ -176,6 +185,11 @@ contract Task is Ownable {
                     dataHash
                 );
                 netStats.taskQueued();
+                
+                bytes32 gpuID = bytes32(0);
+                if (bytes(gpuName).length > 0) {
+                    gpuID = keccak256(abi.encodePacked(gpuName, gpuVram));
+                }
                 taskQueue.pushTask(
                     taskInfo.id,
                     taskType,
@@ -184,7 +198,8 @@ contract Task is Ownable {
                     dataHash,
                     vramLimit,
                     taskFee,
-                    taskFee / cap
+                    taskFee / cap,
+                    gpuID
                 );
             } else {
                 revert(reason);
@@ -220,8 +235,11 @@ contract Task is Ownable {
                     }
                 }
             }
+            if (!sameGPU) {
+                gpuID = bytes32(0);
+            }
 
-            try taskQueue.popTask(sameGPU, minVram) returns (
+            try taskQueue.popTask(sameGPU, minVram, gpuID) returns (
                 TaskInQueue memory task
             ) {
                 TaskInfo memory taskInfo;
@@ -607,7 +625,7 @@ contract Task is Ownable {
         bytes memory resultA = tasks[taskId].results[roundA];
         bytes memory resultB = tasks[taskId].results[roundB];
 
-        if (taskType == TASK_TYPE_SD) {
+        if (taskType == TASK_TYPE_SD || taskType == TASK_TYPE_SD_FT) {
             return Hamming.compareHamming(resultA, resultB, distanceThreshold);
         } else if (taskType == TASK_TYPE_LLM) {
             return keccak256(resultA) == keccak256(resultB);

@@ -10,6 +10,7 @@ struct TaskInQueue {
     uint vramLimit;
     uint taskFee;
     uint price;
+    bytes32 gpuID;
 }
 
 struct TaskMaxHeap {

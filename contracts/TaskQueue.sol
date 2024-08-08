@@ -22,6 +22,8 @@ contract TaskQueue is Ownable {
     // store tasks in heap grouped by vrams
     mapping(uint => TaskMaxHeap) private sdTaskHeaps;
     mapping(uint => TaskMaxHeap) private gptTaskHeaps;
+    // store sd finetune tasks in heap grouped by gpu id
+    mapping(bytes32 => TaskMaxHeap) private sdFtTaskHeaps;
 
     // store all tasks in min heap, useful for removing the cheapest task when the task queue is full
     TaskMinHeap private taskHeap;
@@ -58,10 +60,11 @@ contract TaskQueue is Ownable {
         bytes32 dataHash,
         uint vramLimit,
         uint taskFee,
-        uint price
+        uint price,
+        bytes32 gpuID
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
-        require(taskType == 0 || taskType == 1, "Invalid task type");
+        require(taskType == 0 || taskType == 1 || taskType == 2, "Invalid task type");
         require(taskHeap.size() < sizeLimit, "Task queue is full");
 
         TaskInQueue memory task = TaskInQueue({
@@ -72,36 +75,45 @@ contract TaskQueue is Ownable {
             dataHash: dataHash,
             vramLimit: vramLimit,
             taskFee: taskFee,
-            price: price
+            price: price,
+            gpuID: gpuID
         });
         if (taskType == 0) {
             // sd task
             sdTaskVrams.add(vramLimit);
             sdTaskHeaps[vramLimit].insert(task);
-        } else {
+        } else if (taskType == 1) {
             gptTaskVrams.add(vramLimit);
             gptTaskHeaps[vramLimit].insert(task);
+        } else if (taskType == 2) {
+            sdFtTaskHeaps[gpuID].insert(task);
         }
         taskHeap.insert(task);
     }
 
-    function popTask(bool sameGPU, uint vramLimit) public returns (TaskInQueue memory) {
+    function popTask(bool sameGPU, uint vramLimit, bytes32 gpuID) public returns (TaskInQueue memory) {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskHeap.size() > 0, "No available task");
 
-        bool isGPT = false;
-        uint resultVram = 0;
+        TaskMaxHeap storage resultHeap = sdFtTaskHeaps[0];
         uint maxPrice = 0;
 
         if (sameGPU) {
+            if (sdFtTaskHeaps[gpuID].size() > 0) {
+                TaskInQueue memory task = sdFtTaskHeaps[gpuID].top();
+                if (task.price > maxPrice) {
+                    maxPrice = task.price;
+                    resultHeap = sdFtTaskHeaps[gpuID];
+                }
+            }
+
             for (uint i = 0; i < gptTaskVrams.length(); i++) {
                 uint vram = gptTaskVrams.at(i);
                 if (vram <= vramLimit) {
                     TaskInQueue memory task = gptTaskHeaps[vram].top();
                     if (task.price > maxPrice) {
                         maxPrice = task.price;
-                        resultVram = vram;
-                        isGPT = true;
+                        resultHeap = gptTaskHeaps[vram];
                     }
                 }
             }
@@ -113,26 +125,23 @@ contract TaskQueue is Ownable {
                 TaskInQueue memory task = sdTaskHeaps[vram].top();
                 if (task.price > maxPrice) {
                     maxPrice = task.price;
-                    resultVram = vram;
-                    isGPT = false;
+                    resultHeap = sdTaskHeaps[vram];
                 }
             }
         }
 
         require(maxPrice > 0, "No available task");
 
-        TaskInQueue memory result;
-        if (isGPT) {
-            result = gptTaskHeaps[resultVram].pop();
-            if (gptTaskHeaps[resultVram].size() == 0) {
-                delete gptTaskHeaps[resultVram];
-                gptTaskVrams.remove(resultVram);
-            }
-        } else {
-            result = sdTaskHeaps[resultVram].pop();
-            if (sdTaskHeaps[resultVram].size() == 0) {
-                delete sdTaskHeaps[resultVram];
-                sdTaskVrams.remove(resultVram);
+        TaskInQueue memory result = resultHeap.pop();
+        if (resultHeap.size() == 0) {
+            if (result.taskType == 0) {
+                delete sdTaskHeaps[result.vramLimit];
+                sdTaskVrams.remove(result.vramLimit);
+            } else if (result.taskType == 1) {
+                delete gptTaskHeaps[result.vramLimit];
+                gptTaskVrams.remove(result.vramLimit);
+            } else if (result.taskType == 2) {
+                delete sdFtTaskHeaps[result.gpuID];
             }
         }
         taskHeap.remove(result.id);
