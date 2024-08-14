@@ -13,7 +13,7 @@ contract Task is Ownable {
 
     uint private TASK_TYPE_SD = 0;
     uint private TASK_TYPE_LLM = 1;
-    uint private TASK_TYPE_SD_FT = 2;
+    uint private TASK_TYPE_SD_FT_LORA = 2;
 
     struct TaskInfo {
         uint256 id;
@@ -106,10 +106,10 @@ contract Task is Ownable {
         uint gpuVram
     ) payable public {
         require(
-            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM || taskType == TASK_TYPE_SD_FT,
+            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM || taskType == TASK_TYPE_SD_FT_LORA,
             "Invalid task type"
         );
-        if (taskType == TASK_TYPE_SD_FT) {
+        if (taskType == TASK_TYPE_SD_FT_LORA) {
             require(bytes(gpuName).length > 0, "GPU name is empty");
         }
         uint taskFee = msg.value;
@@ -636,7 +636,7 @@ contract Task is Ownable {
         bytes memory resultA = tasks[taskId].results[roundA];
         bytes memory resultB = tasks[taskId].results[roundB];
 
-        if (taskType == TASK_TYPE_SD || taskType == TASK_TYPE_SD_FT) {
+        if (taskType == TASK_TYPE_SD || taskType == TASK_TYPE_SD_FT_LORA) {
             return Hamming.compareHamming(resultA, resultB, distanceThreshold);
         } else if (taskType == TASK_TYPE_LLM) {
             return keccak256(resultA) == keccak256(resultB);
