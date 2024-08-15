@@ -79,6 +79,10 @@ contract Node is Ownable {
         return nodesMap[nodeAddress];
     }
 
+    function getStakedAmount(address nodeAddress) public view returns (uint) {
+        return stakedAmount[nodeAddress];
+    }
+
     function getAvailableGPUs() public view returns (GPUInfo[] memory) {
         uint length = _availableGPUIDSet.length();
         GPUInfo[] memory res = new GPUInfo[](length);
@@ -253,6 +257,7 @@ contract Node is Ownable {
 
         qos.finishTask(nodeAddress);
         qos.kickout(nodeAddress);
+        netStats.nodeTaskFinished();
         // Remove the node from the list
         removeNode(nodeAddress);
         emit NodeSlashed(nodeAddress);
@@ -384,7 +389,9 @@ contract Node is Ownable {
         uint k,
         uint vramLimit,
         bool useSameGPU,
-        bytes32 seed
+        bytes32 seed,
+        string calldata gpuName,
+        uint gpuVram
     ) external returns (address[] memory) {
         require(k > 0, "select nodes count cannot be zero");
 
@@ -393,9 +400,14 @@ contract Node is Ownable {
         address[] memory res = new address[](k);
 
         if (useSameGPU) {
-            (bytes32[] memory gpuIDs, uint[] memory idScores) = filterGPUID(vramLimit, k);
-            uint index = generator.multinomial(idScores, 0, idScores.length);
-            bytes32 gpuID = gpuIDs[index];
+            bytes32 gpuID;
+            if (bytes(gpuName).length > 0) {
+                gpuID = keccak256(abi.encodePacked(gpuName, gpuVram));
+            } else {
+                (bytes32[] memory gpuIDs, uint[] memory idScores) = filterGPUID(vramLimit, k);
+                uint index = generator.multinomial(idScores, 0, idScores.length);
+                gpuID = gpuIDs[index];
+            }
             for (uint i = 0; i < k; i++) {
                 (address[] memory nodes, uint[] memory scores) = filterNodesByGPUID(gpuID);
                 uint j = generator.multinomial(scores, 0, nodes.length);

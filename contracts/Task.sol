@@ -13,6 +13,7 @@ contract Task is Ownable {
 
     uint private TASK_TYPE_SD = 0;
     uint private TASK_TYPE_LLM = 1;
+    uint private TASK_TYPE_SD_FT_LORA = 2;
 
     struct TaskInfo {
         uint256 id;
@@ -33,6 +34,8 @@ contract Task is Ownable {
         uint256 timeout;
         uint256 balance;
         uint256 totalBalance;
+        string gpuName;
+        uint gpuVram;
     }
 
     Node private node;
@@ -98,12 +101,17 @@ contract Task is Ownable {
         bytes32 taskHash,
         bytes32 dataHash,
         uint vramLimit,
-        uint cap
+        uint cap,
+        string calldata gpuName,
+        uint gpuVram
     ) payable public {
         require(
-            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM,
+            taskType == TASK_TYPE_SD || taskType == TASK_TYPE_LLM || taskType == TASK_TYPE_SD_FT_LORA,
             "Invalid task type"
         );
+        if (taskType == TASK_TYPE_SD_FT_LORA) {
+            require(bytes(gpuName).length > 0, "GPU name is empty");
+        }
         uint taskFee = msg.value;
 
         TaskInfo memory taskInfo;
@@ -122,74 +130,92 @@ contract Task is Ownable {
         taskInfo.nonces = new bytes32[](3);
         taskInfo.results = new bytes[](3);
         taskInfo.aborted = false;
+        taskInfo.gpuName = gpuName;
+        taskInfo.gpuVram = gpuVram;
 
         bytes32 seed = keccak256(
             abi.encodePacked(blockhash(block.number - 1), taskHash, dataHash)
         );
+        bool useSameGPU = taskType == TASK_TYPE_LLM || bytes(gpuName).length > 0;
         try
             node.randomSelectNodes(
                 3,
                 vramLimit,
-                taskType == TASK_TYPE_LLM,
-                seed
+                useSameGPU,
+                seed,
+                gpuName,
+                gpuVram
             )
         returns (address[] memory nodeAddresses) {
-            emit TaskPending(
-                taskInfo.id,
-                taskType,
-                taskInfo.creator,
-                taskHash,
-                dataHash
-            );
-            netStats.taskQueued();
-            tasks[taskInfo.id] = taskInfo;
-            for (uint i = 0; i < 3; i++) {
-                address nodeAddress = nodeAddresses[i];
-                tasks[taskInfo.id].selectedNodes.push(nodeAddress);
-                nodeTasks[nodeAddress] = taskInfo.id;
-                emit TaskStarted(
-                    taskInfo.id,
-                    taskType,
-                    taskInfo.creator,
-                    nodeAddress,
-                    taskHash,
-                    dataHash,
-                    i
-                );
-            }
-            netStats.taskStarted();
+            startTask(taskInfo, nodeAddresses);
         } catch Error(string memory reason) {
             string memory target = "No available node";
             if (keccak256(bytes(reason)) == keccak256(bytes(target))) {
-                if (taskQueue.size() == taskQueue.getSizeLimit()) {
-                    TaskInQueue memory task = taskQueue.removeCheapestTask();
-                    // stats task count in netstats
-                    netStats.taskStarted();
-                    netStats.taskFinished();
-                    emit TaskAborted(task.id, "Task fee is too low");
-                }
-                emit TaskPending(
-                    taskInfo.id,
-                    taskType,
-                    taskInfo.creator,
-                    taskHash,
-                    dataHash
-                );
-                netStats.taskQueued();
-                taskQueue.pushTask(
-                    taskInfo.id,
-                    taskType,
-                    taskInfo.creator,
-                    taskHash,
-                    dataHash,
-                    vramLimit,
-                    taskFee,
-                    taskFee / cap
-                );
+                pushTaskToQueue(taskInfo, cap);
             } else {
                 revert(reason);
             }
         }
+    }
+
+    function startTask(TaskInfo memory taskInfo, address[] memory nodeAddresses) internal {
+        emit TaskPending(
+            taskInfo.id,
+            taskInfo.taskType,
+            taskInfo.creator,
+            taskInfo.taskHash,
+            taskInfo.dataHash
+        );
+        netStats.taskQueued();
+        tasks[taskInfo.id] = taskInfo;
+        for (uint i = 0; i < 3; i++) {
+            address nodeAddress = nodeAddresses[i];
+            tasks[taskInfo.id].selectedNodes.push(nodeAddress);
+            nodeTasks[nodeAddress] = taskInfo.id;
+            emit TaskStarted(
+                taskInfo.id,
+                taskInfo.taskType,
+                taskInfo.creator,
+                nodeAddress,
+                taskInfo.taskHash,
+                taskInfo.dataHash,
+                i
+            );
+        }
+        netStats.taskStarted();
+    }
+
+    function pushTaskToQueue(TaskInfo memory taskInfo, uint cap) internal {
+        if (taskQueue.size() == taskQueue.getSizeLimit()) {
+            TaskInQueue memory task = taskQueue.removeCheapestTask();
+            // stats task count in netstats
+            netStats.taskStarted();
+            netStats.taskFinished();
+            emit TaskAborted(task.id, "Task fee is too low");
+        }
+        emit TaskPending(
+            taskInfo.id,
+            taskInfo.taskType,
+            taskInfo.creator,
+            taskInfo.taskHash,
+            taskInfo.dataHash
+        );
+        netStats.taskQueued();
+        bytes32 gpuID = bytes32(0);
+        if (bytes(taskInfo.gpuName).length > 0) {
+            gpuID = keccak256(abi.encodePacked(taskInfo.gpuName, taskInfo.gpuVram));
+        }
+        taskQueue.pushTask(
+            taskInfo.id,
+            taskInfo.taskType,
+            taskInfo.creator,
+            taskInfo.taskHash,
+            taskInfo.dataHash,
+            taskInfo.vramLimit,
+            taskInfo.totalBalance,
+            taskInfo.totalBalance / cap,
+            gpuID
+        );
     }
 
     function nodeAvailableCallback(address root) external {
@@ -220,8 +246,11 @@ contract Task is Ownable {
                     }
                 }
             }
+            if (!sameGPU) {
+                gpuID = bytes32(0);
+            }
 
-            try taskQueue.popTask(sameGPU, minVram) returns (
+            try taskQueue.popTask(sameGPU, minVram, gpuID) returns (
                 TaskInQueue memory task
             ) {
                 TaskInfo memory taskInfo;
@@ -607,7 +636,7 @@ contract Task is Ownable {
         bytes memory resultA = tasks[taskId].results[roundA];
         bytes memory resultB = tasks[taskId].results[roundB];
 
-        if (taskType == TASK_TYPE_SD) {
+        if (taskType == TASK_TYPE_SD || taskType == TASK_TYPE_SD_FT_LORA) {
             return Hamming.compareHamming(resultA, resultB, distanceThreshold);
         } else if (taskType == TASK_TYPE_LLM) {
             return keccak256(resultA) == keccak256(resultB);
