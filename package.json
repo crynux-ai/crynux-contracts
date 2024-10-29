@@ -1,5 +1,5 @@
 {
-    "name": "h-contracts",
+    "name": "crynux-contracts",
     "version": "0.0.1",
     "scripts": {
         "compile": "hardhat compile",
@@ -14,5 +14,8 @@
         "@openzeppelin/test-helpers": "^0.5.16",
         "@symblox/hardhat-abi-gen": "^0.2.0",
         "hardhat": "^2.22.2"
+    },
+    "dependencies": {
+        "vrf-solidity": "^0.2.3"
     }
 }
