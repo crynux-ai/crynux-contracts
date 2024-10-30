@@ -24,7 +24,7 @@ contract QOS is Ownable {
 
     uint private kickoutThreshold;
 
-    constructor() {
+    constructor() Ownable(msg.sender) {
         kickoutThreshold = 20;
     }
 

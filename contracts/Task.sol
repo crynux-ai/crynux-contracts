@@ -83,7 +83,7 @@ contract Task is Ownable {
         QOS qosInstance,
         TaskQueue taskQueueInstance,
         NetworkStats netStatsInstance
-    ) {
+    ) Ownable(msg.sender) {
         node = nodeInstance;
         qos = qosInstance;
         taskQueue = taskQueueInstance;
