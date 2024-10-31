@@ -68,7 +68,7 @@ contract Node is Ownable {
 
     Random.Generator private generator;
 
-    constructor(QOS qosInstance, NetworkStats netStatsInstance) {
+    constructor(QOS qosInstance, NetworkStats netStatsInstance) Ownable(msg.sender) {
         qos = qosInstance;
         netStats = netStatsInstance;
     }

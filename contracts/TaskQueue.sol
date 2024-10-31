@@ -28,7 +28,7 @@ contract TaskQueue is Ownable {
     // store all tasks in min heap, useful for removing the cheapest task when the task queue is full
     TaskMinHeap private taskHeap;
 
-    constructor() {
+    constructor() Ownable(msg.sender) {
         sizeLimit = 50;
     }
 

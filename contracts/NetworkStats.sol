@@ -5,6 +5,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract NetworkStats is Ownable {
 
+    constructor() Ownable(msg.sender) {}
+
     using EnumerableSet for EnumerableSet.AddressSet;
 
     struct NodeInfo {
