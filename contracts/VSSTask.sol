@@ -6,8 +6,6 @@ import "./libs/VSS.sol";
 
 contract VSSTask is Ownable {
 
-    constructor() Ownable(msg.sender) {}
-
     /* Events */
 
     event TaskCreated(
@@ -66,16 +64,42 @@ contract VSSTask is Ownable {
         Success
     }
 
+    enum TaskStateTransition {
+        reportTaskParametersUploaded,
+        submitTaskScore,
+        reportTaskError,
+        validateSingleTask,
+        validateTaskGroup,
+        reportTaskResultUploaded,
+        abortTask
+    }
+
     struct TaskInfo {
         address creator;
         bytes32 taskIDCommitment;
         bytes32 samplingSeed;
         bytes32 nonce;
+        uint256 sequence;
         TaskStatus status;
+        address selectedNode;
+        uint256 timeout;
     }
 
     mapping(bytes32 => TaskInfo) private tasks;
     mapping(bytes32 => uint) private usedNonces;
+    uint256 private nextSequence;
+    address private relayAddress;
+    uint256 private timeout;
+
+    constructor() Ownable(msg.sender) {
+        nextSequence = 1;
+        timeout = 3 minutes;
+    }
+
+    /* Interfaces for owner */
+    function setRelayAddress(address addr) external onlyOwner {
+        relayAddress = addr;
+    }
 
     /* Interfaces for applications */
 
@@ -98,6 +122,10 @@ contract VSSTask is Ownable {
         taskInfo.creator = msg.sender;
         taskInfo.taskIDCommitment = taskIDCommitment;
         taskInfo.nonce = nonce;
+        taskInfo.timeout = block.timestamp + timeout;
+
+        taskInfo.sequence = nextSequence;
+        nextSequence += 1;
 
         taskInfo.samplingSeed = VSS.generateSamplingSeed(taskIDCommitment);
 
@@ -112,12 +140,7 @@ contract VSSTask is Ownable {
         bytes calldata publicKey
     ) public {
         TaskInfo memory taskInfo = tasks[taskIDCommitment];
-        require(taskInfo.taskIDCommitment != 0, "Task not found");
-
-        require(
-            taskInfo.status == TaskStatus.ScoreReady
-            || taskInfo.status == TaskStatus.ErrorReported,
-            "Illegal task status");
+        checkStateTransitionAllowance(taskInfo, TaskStateTransition.validateSingleTask);
 
         VSS.validateSamplingNumber(vrfProof, publicKey, taskInfo.creator, taskInfo.samplingSeed, false);
     }
@@ -130,15 +153,18 @@ contract VSSTask is Ownable {
         bytes calldata vrfProof,
         bytes calldata publicKey
     ) public {
-        TaskInfo memory taskInfo = tasks[taskIDCommitment1];
-        require(taskInfo.taskIDCommitment != 0, "Task not found");
+        TaskInfo memory taskInfo1 = tasks[taskIDCommitment1];
+        TaskInfo memory taskInfo2 = tasks[taskIDCommitment2];
+        TaskInfo memory taskInfo3 = tasks[taskIDCommitment3];
 
-        require(
-            taskInfo.status == TaskStatus.ScoreReady
-            || taskInfo.status == TaskStatus.ErrorReported,
-            "Illegal task status");
+        checkStateTransitionAllowance(taskInfo1, TaskStateTransition.validateTaskGroup);
+        checkStateTransitionAllowance(taskInfo2, TaskStateTransition.validateTaskGroup);
+        checkStateTransitionAllowance(taskInfo3, TaskStateTransition.validateTaskGroup);
 
-        VSS.validateSamplingNumber(vrfProof, publicKey, taskInfo.creator, taskInfo.samplingSeed, true);
+        require(taskInfo1.sequence < taskInfo2.sequence, "Invalid task sequence");
+        require(taskInfo1.sequence < taskInfo3.sequence, "Invalid task sequence");
+
+        VSS.validateSamplingNumber(vrfProof, publicKey, taskInfo1.creator, taskInfo1.samplingSeed, true);
     }
 
     /* Interfaces for nodes */
@@ -169,4 +195,80 @@ contract VSSTask is Ownable {
     function reportTaskResultUploaded(
         bytes32 taskIDCommitment
     ) public {}
+
+    /* State Transition */
+    function checkStateTransitionAllowance(
+        TaskInfo calldata taskInfo,
+        TaskStateTransition transition
+    ) private {
+        require(taskInfo.taskIDCommitment != 0, "Task not found");
+
+        if (transition == TaskStateTransition.reportTaskParametersUploaded) {
+
+            require(msg.sender == relayAddress, "Invalid caller");
+
+            require(
+                taskInfo.status == TaskStatus.Started,
+                "Illegal previous task state"
+            );
+
+        } else if (transition == TaskStateTransition.submitTaskScore) {
+
+            require(msg.sender == taskInfo.selectedNode, "Invalid caller");
+
+            require(
+                taskInfo.status == TaskStatus.ParametersUploaded,
+                "Illegal previous task state"
+            );
+
+        } else if (transition == TaskStateTransition.reportTaskError) {
+
+            require(msg.sender == taskInfo.selectedNode, "Invalid caller");
+
+            require(
+                taskInfo.status == TaskStatus.ParametersUploaded,
+                "Illegal previous task state"
+            );
+
+        } else if (transition == TaskStateTransition.validateSingleTask) {
+
+            require(msg.sender == taskInfo.selectedNode, "Invalid caller");
+
+            require(
+                taskInfo.status == TaskStatus.ScoreReady
+                || taskInfo.status == TaskStatus.ErrorReported,
+                "Illegal previous task state"
+            );
+
+        } else if (transition == TaskStateTransition.validateTaskGroup) {
+
+            require(msg.sender == taskInfo.selectedNode, "Invalid caller");
+
+            require(
+                taskInfo.status == TaskStatus.ScoreReady
+                || taskInfo.status == TaskStatus.ErrorReported
+                || taskInfo.status == TaskStatus.Aborted,
+                "Illegal previous task state"
+            );
+
+        } else if (transition == TaskStateTransition.reportTaskResultUploaded) {
+
+            require(msg.sender == relayAddress, "Invalid caller");
+
+            require(
+                taskInfo.status == TaskStatus.Validated,
+                "Illegal previous task state"
+            );
+
+        } else if (transition == TaskStateTransition.abortTask) {
+
+            require(
+                msg.sender == taskInfo.creator
+                || msg.sender == taskInfo.selectedNode,
+                "Invalid caller"
+            );
+
+            require(block.timestamp > taskInfo.timeout, "Timeout not reached");
+        }
+    }
 }
