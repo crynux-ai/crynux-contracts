@@ -65,7 +65,7 @@ library VRF {
   /// @param _gammaX The x-coordinate of the gamma EC point
   /// @param _gammaY The y-coordinate of the gamma EC point
   /// @return The VRF hash ouput as shas256 digest
-  function gammaToHash(uint256 _gammaX, uint256 _gammaY) public pure returns (bytes32) {
+  function gammaToHash(uint256 _gammaX, uint256 _gammaY) internal pure returns (bytes32) {
     bytes memory c = abi.encodePacked(
       // Cipher suite code (SECP256K1-SHA256-TAI is 0xFE)
       uint8(0xFE),

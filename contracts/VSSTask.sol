@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./VSS.sol";
+import "./libs/VSS.sol";
 
 contract VSSTask is Ownable {
 
@@ -108,7 +108,7 @@ contract VSSTask is Ownable {
 
     function validateSingleTask(
         bytes32 taskIDCommitment,
-        uint256[4] calldata vrfProof,
+        bytes calldata vrfProof,
         bytes calldata publicKey
     ) public {
         TaskInfo memory taskInfo = tasks[taskIDCommitment];
@@ -127,7 +127,7 @@ contract VSSTask is Ownable {
         bytes32 taskIDCommitment2,
         bytes32 taskIDCommitment3,
         bytes32 taskGUID,
-        uint256[4] calldata vrfProof,
+        bytes calldata vrfProof,
         bytes calldata publicKey
     ) public {
         TaskInfo memory taskInfo = tasks[taskIDCommitment1];

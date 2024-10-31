@@ -14,7 +14,11 @@
         "@openzeppelin/contracts": "5.0.2",
         "@openzeppelin/test-helpers": "^0.5.16",
         "@symblox/hardhat-abi-gen": "^0.2.0",
+        "bn.js": "^5.2.1",
         "chai": "^4.3.7",
-        "hardhat": "^2.22.2"
+        "eth-crypto": "^2.6.0",
+        "hardhat": "^2.22.15",
+        "vrf-ts-256": "^1.0.0",
+        "web3": "^4.14.0"
     }
 }
