@@ -54,4 +54,15 @@ library VSS {
             require(lastNum != 0, "Task is selected for validation");
         }
     }
+
+    function validateGUID(
+        bytes32 taskGUID,
+        bytes32 taskIDCommitment,
+        bytes32 nonce
+    ) internal view {
+        bytes32 generated = keccak256(
+            abi.encodePacked(taskGUID, nonce)
+        );
+        require(generated == taskIDCommitment, "Incorrect Task GUID");
+    }
 }
