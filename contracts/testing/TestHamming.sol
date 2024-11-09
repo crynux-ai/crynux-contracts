@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.18;
 
-import "../Hamming.sol";
+import "../libs/Hamming.sol";
 
 contract TestHamming {
     function testHamming() public view returns (uint, uint) {

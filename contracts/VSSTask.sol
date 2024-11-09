@@ -3,7 +3,7 @@ pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./libs/VSS.sol";
-import "./Hamming.sol";
+import "./libs/Hamming.sol";
 import "./Node.sol";
 import "./QOS.sol";
 import "./TaskQueue.sol";

@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./QOS.sol";
-import "./Random.sol";
+import "./libs/Random.sol";
 import "./NetworkStats.sol";
 
 abstract contract TaskWithCallback {
