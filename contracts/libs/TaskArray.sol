@@ -2,11 +2,14 @@
 pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/utils/Arrays.sol";
+import "./Heap.sol";
 
 library TaskArray {
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
-    
+    using UniqueHeap for UniqueHeap.MaxUintUniqueHeap;
+    using UniqueHeap for UniqueHeap.MinUintUniqueHeap;
+
     struct Task {
         bytes32 taskIDCommitment;
         uint taskFee;
@@ -29,11 +32,12 @@ library TaskArray {
         mapping(uint => TaskGroup) taskGroupNodes;
         // store all taskIDCommitments
         EnumerableSet.Bytes32Set taskIDCommitmentSet;
-        mapping (bytes32 => uint) taskPriceMap;
-        // store all task prices
-        EnumerableSet.UintSet taskPriceSet;
-        // task prices array, used for binary search position of new added task
-        uint[] taskPrices;
+        // mapping from task id commitment to price
+        mapping(bytes32 => uint) taskPriceMap;
+        // task price max heap, used to get max price
+        UniqueHeap.MaxUintUniqueHeap maxPriceHeap;
+        // task price min heap, used to get min price
+        UniqueHeap.MinUintUniqueHeap minPriceHeap;
     }
 
     function add(TArray storage arr, Task memory task) internal {
@@ -41,20 +45,17 @@ library TaskArray {
         arr.taskIDCommitmentSet.add(task.taskIDCommitment);
         arr.taskPriceMap[task.taskIDCommitment] = price;
         arr.taskGroupNodes[price].tasks[task.taskIDCommitment] = task;
-        arr.taskGroupNodes[price].taskIDCommitmentSet.add(task.taskIDCommitment);
-
-        if (!arr.taskPriceSet.contains(price)) {
-            arr.taskPriceSet.add(price);
-            uint loc = Arrays.findUpperBound(arr.taskPrices, price);
-            arr.taskPrices.push(price);
-            for (uint i = arr.taskPrices.length; i > loc; i--) {
-                arr.taskPrices[i] = arr.taskPrices[i - 1];
-            }
-            arr.taskPrices[loc] = price;
-        } 
+        arr.taskGroupNodes[price].taskIDCommitmentSet.add(
+            task.taskIDCommitment
+        );
+        arr.maxPriceHeap.push(price);
+        arr.minPriceHeap.push(price);
     }
 
-    function contains(TArray storage arr, bytes32 taskIDCommitment) internal view returns (bool) {
+    function contains(
+        TArray storage arr,
+        bytes32 taskIDCommitment
+    ) internal view returns (bool) {
         return arr.taskIDCommitmentSet.contains(taskIDCommitment);
     }
 
@@ -65,30 +66,33 @@ library TaskArray {
             delete arr.taskPriceMap[taskIDCommitment];
 
             delete arr.taskGroupNodes[price].tasks[taskIDCommitment];
-            arr.taskGroupNodes[price].taskIDCommitmentSet.remove(taskIDCommitment);
+            arr.taskGroupNodes[price].taskIDCommitmentSet.remove(
+                taskIDCommitment
+            );
 
             if (arr.taskGroupNodes[price].taskIDCommitmentSet.length() == 0) {
                 delete arr.taskGroupNodes[price];
-                arr.taskPriceSet.remove(price);
                 // remove price from arr.taskPrices
-                uint loc = 0;
-                for (; loc < arr.taskPrices.length && arr.taskPrices[loc] != price; loc++) {}
-                for (; loc < arr.taskPrices.length - 1; loc++) {
-                    arr.taskPrices[loc] = arr.taskPrices[loc + 1];
-                }
-                arr.taskPrices.pop();
+                arr.maxPriceHeap.remove(price);
+                arr.minPriceHeap.remove(price);
             }
         } else {
             revert("No such task");
         }
     }
 
-    function get(TArray storage arr, uint price) internal view returns (Task[] memory) {
-        if (arr.taskPriceSet.contains(price)) {
+    function get(
+        TArray storage arr,
+        uint price
+    ) internal view returns (Task[] memory) {
+        if (arr.maxPriceHeap.contains(price)) {
             uint l = arr.taskGroupNodes[price].taskIDCommitmentSet.length();
             Task[] memory tasks = new Task[](l);
             for (uint i = 0; i < l; i++) {
-                bytes32 taskIDCommitment = arr.taskGroupNodes[price].taskIDCommitmentSet.at(i);
+                bytes32 taskIDCommitment = arr
+                    .taskGroupNodes[price]
+                    .taskIDCommitmentSet
+                    .at(i);
                 tasks[i] = arr.taskGroupNodes[price].tasks[taskIDCommitment];
             }
             return tasks;
@@ -98,16 +102,16 @@ library TaskArray {
     }
 
     function minPrice(TArray storage arr) internal view returns (uint) {
-        if (arr.taskPrices.length > 0) {
-            return arr.taskPrices[0];
+        if (arr.minPriceHeap.size() > 0) {
+            return arr.minPriceHeap.top();
         } else {
             revert("Task array is empty");
         }
     }
 
     function maxPrice(TArray storage arr) internal view returns (uint) {
-        if (arr.taskPrices.length > 0) {
-            return arr.taskPrices[arr.taskPrices.length - 1];
+        if (arr.maxPriceHeap.size() > 0) {
+            return arr.maxPriceHeap.top();
         } else {
             revert("Task array is empty");
         }
