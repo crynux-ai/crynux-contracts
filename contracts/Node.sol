@@ -21,12 +21,14 @@ contract Node is Ownable {
     uint256 private requiredStakeAmount = 400 * 10 ** 18;
 
     // Node status
-    uint private NODE_STATUS_QUIT = 0;
-    uint private NODE_STATUS_AVAILABLE = 1;
-    uint private NODE_STATUS_BUSY = 2;
-    uint private NODE_STATUS_PENDING_PAUSE = 3;
-    uint private NODE_STATUS_PENDING_QUIT = 4;
-    uint private NODE_STATUS_PAUSED = 5;
+    enum NodeStatus {
+        Quit,
+        Available,
+        Busy,
+        PendingPause,
+        PendingQuit,
+        Paused
+    }
 
     QOS private qos;
     NetworkStats private netStats;
@@ -37,7 +39,7 @@ contract Node is Ownable {
     }
 
     struct NodeInfo {
-        uint status;
+        NodeStatus status;
         bytes32 gpuID;
         GPUInfo gpu;
         uint score;
@@ -102,11 +104,11 @@ contract Node is Ownable {
         return _availableNodes.values();
     }
 
-    function getNodeStatus(address nodeAddress) public view returns (uint) {
+    function getNodeStatus(address nodeAddress) public view returns (NodeStatus) {
         return nodesMap[nodeAddress].status;
     }
 
-    function setNodeStatus(address nodeAddress, uint status) private {
+    function setNodeStatus(address nodeAddress, NodeStatus status) private {
         nodesMap[nodeAddress].status = status;
     }
 
@@ -166,7 +168,7 @@ contract Node is Ownable {
     ) public payable {
         require(allNodes.length() < maxNodesAllowed, "Network is full");
         require(
-            getNodeStatus(msg.sender) == NODE_STATUS_QUIT,
+            getNodeStatus(msg.sender) == NodeStatus.Quit,
             "Node already joined"
         );
 
@@ -183,7 +185,7 @@ contract Node is Ownable {
             score += 1;
         }
         nodesMap[msg.sender] = NodeInfo(
-            NODE_STATUS_AVAILABLE,
+            NodeStatus.Available,
             gpuID,
             GPUInfo(gpuName, gpuVram),
             score,
@@ -198,14 +200,14 @@ contract Node is Ownable {
     }
 
     function quit() public {
-        uint nodeStatus = getNodeStatus(msg.sender);
+        NodeStatus nodeStatus = getNodeStatus(msg.sender);
 
         if (
-            nodeStatus == NODE_STATUS_AVAILABLE ||
-            nodeStatus == NODE_STATUS_PAUSED
+            nodeStatus == NodeStatus.Available ||
+            nodeStatus == NodeStatus.Paused
         ) {
             // Remove the node from the list
-            if (nodeStatus == NODE_STATUS_AVAILABLE) {
+            if (nodeStatus == NodeStatus.Available) {
                 markNodeUnavailable(msg.sender);
             }
 
@@ -216,21 +218,21 @@ contract Node is Ownable {
             stakedAmount[msg.sender] = 0;
             (bool success, ) = msg.sender.call{value: token}("");
             require(success, "Token transfer failed");
-        } else if (nodeStatus == NODE_STATUS_BUSY) {
-            setNodeStatus(msg.sender, NODE_STATUS_PENDING_QUIT);
+        } else if (nodeStatus == NodeStatus.Busy) {
+            setNodeStatus(msg.sender, NodeStatus.PendingQuit);
         } else {
             revert("Illegal node status");
         }
     }
 
     function pause() public {
-        uint nodeStatus = getNodeStatus(msg.sender);
+        NodeStatus nodeStatus = getNodeStatus(msg.sender);
 
-        if (nodeStatus == NODE_STATUS_AVAILABLE) {
-            setNodeStatus(msg.sender, NODE_STATUS_PAUSED);
+        if (nodeStatus == NodeStatus.Available) {
+            setNodeStatus(msg.sender, NodeStatus.Paused);
             markNodeUnavailable(msg.sender);
-        } else if (nodeStatus == NODE_STATUS_BUSY) {
-            setNodeStatus(msg.sender, NODE_STATUS_PENDING_PAUSE);
+        } else if (nodeStatus == NodeStatus.Busy) {
+            setNodeStatus(msg.sender, NodeStatus.PendingPause);
         } else {
             revert("Illegal node status");
         }
@@ -238,10 +240,10 @@ contract Node is Ownable {
 
     function resume() public {
         require(
-            getNodeStatus(msg.sender) == NODE_STATUS_PAUSED,
+            getNodeStatus(msg.sender) == NodeStatus.Paused,
             "Illegal node status"
         );
-        setNodeStatus(msg.sender, NODE_STATUS_AVAILABLE);
+        setNodeStatus(msg.sender, NodeStatus.Available);
         markNodeAvailable(msg.sender);
     }
 
@@ -251,11 +253,11 @@ contract Node is Ownable {
             "Not called by the task contract"
         );
 
-        uint nodeStatus = getNodeStatus(nodeAddress);
+        NodeStatus nodeStatus = getNodeStatus(nodeAddress);
         require(
-            nodeStatus == NODE_STATUS_BUSY ||
-                nodeStatus == NODE_STATUS_PENDING_PAUSE ||
-                nodeStatus == NODE_STATUS_PENDING_QUIT,
+            nodeStatus == NodeStatus.Busy ||
+                nodeStatus == NodeStatus.PendingPause ||
+                nodeStatus == NodeStatus.PendingQuit,
             "Illegal node status"
         );
 
@@ -278,11 +280,11 @@ contract Node is Ownable {
             "Not called by the task contract"
         );
         require(
-            getNodeStatus(nodeAddress) == NODE_STATUS_AVAILABLE,
+            getNodeStatus(nodeAddress) == NodeStatus.Available,
             "Node is not available"
         );
         markNodeUnavailable(nodeAddress);
-        setNodeStatus(nodeAddress, NODE_STATUS_BUSY);
+        setNodeStatus(nodeAddress, NodeStatus.Busy);
         qos.startTask(nodeAddress);
         netStats.nodeTaskStarted();
     }
@@ -293,11 +295,11 @@ contract Node is Ownable {
             "Not called by the task contract"
         );
 
-        uint nodeStatus = getNodeStatus(nodeAddress);
+        NodeStatus nodeStatus = getNodeStatus(nodeAddress);
         require(
-            nodeStatus == NODE_STATUS_BUSY ||
-                nodeStatus == NODE_STATUS_PENDING_PAUSE ||
-                nodeStatus == NODE_STATUS_PENDING_QUIT,
+            nodeStatus == NodeStatus.Busy ||
+                nodeStatus == NodeStatus.PendingPause ||
+                nodeStatus == NodeStatus.PendingQuit,
             "Illegal node status"
         );
 
@@ -322,10 +324,10 @@ contract Node is Ownable {
         }
         nodesMap[nodeAddress].score = score;
 
-        if (nodeStatus == NODE_STATUS_BUSY) {
-            setNodeStatus(nodeAddress, NODE_STATUS_AVAILABLE);
+        if (nodeStatus == NodeStatus.Busy) {
+            setNodeStatus(nodeAddress, NodeStatus.Available);
             markNodeAvailable(nodeAddress);
-        } else if (nodeStatus == NODE_STATUS_PENDING_QUIT) {
+        } else if (nodeStatus == NodeStatus.PendingQuit) {
             // Remove the node from the list
             removeNode(nodeAddress);
 
@@ -333,8 +335,8 @@ contract Node is Ownable {
             stakedAmount[nodeAddress] = 0;
             (bool success, ) = nodeAddress.call{value: token}("");
             require(success, "Token transfer failed");
-        } else if (nodeStatus == NODE_STATUS_PENDING_PAUSE) {
-            setNodeStatus(nodeAddress, NODE_STATUS_PAUSED);
+        } else if (nodeStatus == NodeStatus.PendingPause) {
+            setNodeStatus(nodeAddress, NodeStatus.Paused);
         }
     }
 
