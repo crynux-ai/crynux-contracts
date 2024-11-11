@@ -17,13 +17,12 @@ library VSS {
         address taskCreator,
         bytes32 samplingSeed,
         bool isSelected
-    ) internal view {
+    ) internal pure {
          // Check public key is consistent with the task creator & tx sender
         require(publicKey.length == 64, "Invalid public key length");
 
         uint derivedAddress = uint(keccak256(publicKey)) & 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-        require(derivedAddress == uint(uint160(msg.sender)), "Sender not allowed");
         require(derivedAddress == uint(uint160(taskCreator)), "Not task creator");
 
         // Extract point data from the public key
@@ -59,7 +58,7 @@ library VSS {
         bytes32 taskGUID,
         bytes32 taskIDCommitment,
         bytes32 nonce
-    ) internal view {
+    ) internal pure {
         bytes32 generated = keccak256(
             abi.encodePacked(taskGUID, nonce)
         );

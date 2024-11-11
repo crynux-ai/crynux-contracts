@@ -140,14 +140,31 @@ contract NetworkStats is Ownable {
         _busyNodes--;
     }
 
-    function taskQueued() public {
+    function taskCreated() public {
         require(
             msg.sender == taskContractAddress,
             "Not called by the task contract"
         );
 
         _totalTasks++;
+    }
+
+    function taskEnqueue() public {
+        require(
+            msg.sender == taskContractAddress,
+            "Not called by the task contract"
+        );
+
         _queuedTasks++;
+    }
+
+    function taskDequeue() public {
+        require(
+            msg.sender == taskContractAddress,
+            "Not called by the task contract"
+        );
+
+        _queuedTasks--;
     }
 
     function taskStarted() public {
@@ -156,7 +173,6 @@ contract NetworkStats is Ownable {
             "Not called by the task contract"
         );
 
-        _queuedTasks--;
         _runningTasks++;
     }
 

@@ -14,7 +14,7 @@ contract TestVSS  {
         address taskCreator,
         bytes32 samplingSeed,
         bool isSelected
-    ) external view returns (bool) {
+    ) external pure returns (bool) {
 
         VSS.validateSamplingNumber(
             vrfProof,

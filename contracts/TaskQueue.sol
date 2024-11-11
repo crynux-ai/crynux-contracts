@@ -4,29 +4,30 @@ pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import "./TaskHeap.sol";
+import "./libs/TaskArray.sol";
 
 contract TaskQueue is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
-    using TaskMaxHeap_impl for TaskMaxHeap;
-    using TaskMinHeap_impl for TaskMinHeap;
+    using EnumerableSet for EnumerableSet.Bytes32Set;
+    using TaskArray for TaskArray.TArray;
 
     address private taskContractAddress;
 
     uint private sizeLimit;
 
-    // store task vrams for sd task type and gpt task type
-    EnumerableSet.UintSet private sdTaskVrams;
-    EnumerableSet.UintSet private gptTaskVrams;
+    // store all task id commitments
+    EnumerableSet.Bytes32Set private taskIDCommitments;
+    mapping (bytes32 => uint) taskVrams;
+    mapping (bytes32 => bytes32) taskGPUIDs;
+    // store gpu vram for tasks that don't specify requiredGPU
+    EnumerableSet.UintSet private vrams;
+    // store gpu id for tasks that specify requiredGPU
+    EnumerableSet.Bytes32Set private gpuIDs;
 
-    // store tasks in heap grouped by vrams
-    mapping(uint => TaskMaxHeap) private sdTaskHeaps;
-    mapping(uint => TaskMaxHeap) private gptTaskHeaps;
-    // store sd finetune tasks in heap grouped by gpu id
-    mapping(bytes32 => TaskMaxHeap) private sdFtTaskHeaps;
-
-    // store all tasks in min heap, useful for removing the cheapest task when the task queue is full
-    TaskMinHeap private taskHeap;
+    // task array for tasks that that don't specify requiredGPU
+    mapping(uint => TaskArray.TArray) private vramTaskArray;
+    // task array for tasks that that specify requiredGPU
+    mapping(bytes32 => TaskArray.TArray) private gpuIDTaskArray;
 
     constructor() Ownable(msg.sender) {
         sizeLimit = 50;
@@ -41,154 +42,170 @@ contract TaskQueue is Ownable {
     }
 
     function size() public view returns (uint) {
-        return taskHeap.size();
+        return taskIDCommitments.length();
     }
 
     function getSizeLimit() public view returns (uint) {
         return sizeLimit;
     }
 
-    function include(uint taskId) public view returns (bool) {
-        return taskHeap.include(taskId);
+    function include(bytes32 taskIDCommitment) public view returns (bool) {
+        return taskIDCommitments.contains(taskIDCommitment);
     }
 
     function pushTask(
-        uint taskId,
-        uint taskType,
-        address creator,
-        bytes32 taskHash,
-        bytes32 dataHash,
-        uint vramLimit,
+        bytes32 taskIDCommitment,
         uint taskFee,
-        uint price,
-        bytes32 gpuID
+        uint taskSize,
+        string calldata modelID,
+        uint minimumVRAM,
+        string calldata requiredGPU,
+        uint requiredGPUVRAM,
+        string calldata taskVersion
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
-        require(taskType == 0 || taskType == 1 || taskType == 2, "Invalid task type");
-        require(taskHeap.size() < sizeLimit, "Task queue is full");
+        require(taskIDCommitments.length() < sizeLimit, "Task queue is full");
 
-        TaskInQueue memory task = TaskInQueue({
-            id: taskId,
-            taskType: taskType,
-            creator: creator,
-            taskHash: taskHash,
-            dataHash: dataHash,
-            vramLimit: vramLimit,
-            taskFee: taskFee,
-            price: price,
-            gpuID: gpuID
-        });
-        if (taskType == 0) {
-            // sd task
-            sdTaskVrams.add(vramLimit);
-            sdTaskHeaps[vramLimit].insert(task);
-        } else if (taskType == 1) {
-            gptTaskVrams.add(vramLimit);
-            gptTaskHeaps[vramLimit].insert(task);
-        } else if (taskType == 2) {
-            sdFtTaskHeaps[gpuID].insert(task);
+        TaskArray.Task memory task = TaskArray.Task(
+            taskIDCommitment,
+            taskFee,
+            taskSize,
+            modelID,
+            minimumVRAM,
+            requiredGPU,
+            requiredGPUVRAM,
+            taskVersion
+        );
+
+        taskIDCommitments.add(taskIDCommitment);
+        taskVrams[taskIDCommitment] = minimumVRAM;
+        if (bytes(requiredGPU).length > 0) {
+            bytes32 gpuID = keccak256(abi.encodePacked(requiredGPU, requiredGPUVRAM));
+            taskGPUIDs[taskIDCommitment] = gpuID;
+            gpuIDs.add(gpuID);
+            gpuIDTaskArray[gpuID].add(task);
+        } else {
+            vrams.add(minimumVRAM);
+            vramTaskArray[minimumVRAM].add(task);
         }
-        taskHeap.insert(task);
     }
 
-    function popTask(bool sameGPU, uint vramLimit, bytes32 gpuID) public returns (TaskInQueue memory) {
+    function popTask(string calldata gpuName, uint gpuVRAM, string calldata version, string calldata lastModelID) public returns (bytes32) {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
-        require(taskHeap.size() > 0, "No available task");
+        require(taskIDCommitments.length() > 0, "No available task");
 
-        TaskMaxHeap storage resultHeap = sdFtTaskHeaps[0];
-        uint maxPrice = 0;
+        bytes32 taskIDCommitment;
+        uint maxPrice;
 
-        if (sameGPU) {
-            if (sdFtTaskHeaps[gpuID].size() > 0) {
-                TaskInQueue memory task = sdFtTaskHeaps[gpuID].top();
-                if (task.price > maxPrice) {
-                    maxPrice = task.price;
-                    resultHeap = sdFtTaskHeaps[gpuID];
+        bytes32 gpuID = keccak256(abi.encodePacked(gpuName, gpuVRAM));
+        if (gpuIDs.contains(gpuID)) {
+            uint price = gpuIDTaskArray[gpuID].maxPrice();
+            TaskArray.Task[] memory tasks = gpuIDTaskArray[gpuID].get(price);
+            // task id commitment which only match the task version
+            bytes32 secondTaskIDCommitment;
+            for (uint i = 0; i < tasks.length; i++) {
+                if (keccak256(bytes(version)) == keccak256(bytes(tasks[i].taskVersion))) {
+                    if (uint(secondTaskIDCommitment) == 0) {
+                        secondTaskIDCommitment = tasks[i].taskIDCommitment;
+                    }
+                    if (keccak256(bytes(lastModelID)) == keccak256(bytes(tasks[i].modelID))) {
+                        taskIDCommitment = tasks[i].taskIDCommitment;
+                        break;
+                    }
                 }
             }
-
-            for (uint i = 0; i < gptTaskVrams.length(); i++) {
-                uint vram = gptTaskVrams.at(i);
-                if (vram <= vramLimit) {
-                    TaskInQueue memory task = gptTaskHeaps[vram].top();
-                    if (task.price > maxPrice) {
-                        maxPrice = task.price;
-                        resultHeap = gptTaskHeaps[vram];
+            if (uint(taskIDCommitment) == 0 && uint(secondTaskIDCommitment) != 0) {
+                taskIDCommitment = secondTaskIDCommitment;
+            }
+            if (uint(taskIDCommitment) != 0) {
+                maxPrice = price;
+            }
+        } else {
+            for (uint i = 0; i < vrams.length(); i++) {
+                uint taskMinVram = vrams.at(i);
+                if (gpuVRAM >= taskMinVram) {
+                    uint price = vramTaskArray[taskMinVram].maxPrice();
+                    if (price > maxPrice) {
+                        TaskArray.Task[] memory tasks = vramTaskArray[taskMinVram].get(price);
+                        // task id commitment which only match the task version
+                        bytes32 secondTaskIDCommitment;
+                        for (uint j = 0; j < tasks.length; j++) {
+                            if (keccak256(bytes(version)) == keccak256(bytes(tasks[j].taskVersion))) {
+                                if (uint(secondTaskIDCommitment) == 0) {
+                                    secondTaskIDCommitment = tasks[j].taskIDCommitment;
+                                }
+                                if (keccak256(bytes(lastModelID)) == keccak256(bytes(tasks[j].modelID))) {
+                                    taskIDCommitment = tasks[j].taskIDCommitment;
+                                    break;
+                                }
+                            }
+                        }
+                        if (uint(taskIDCommitment) == 0 && uint(secondTaskIDCommitment) != 0) {
+                            taskIDCommitment = secondTaskIDCommitment;
+                        }
+                        if (uint(taskIDCommitment) != 0) {
+                            maxPrice = price;
+                        }
                     }
                 }
             }
         }
 
-        for (uint i = 0; i < sdTaskVrams.length(); i++) {
-            uint vram = sdTaskVrams.at(i);
-            if (vram <= vramLimit) {
-                TaskInQueue memory task = sdTaskHeaps[vram].top();
-                if (task.price > maxPrice) {
-                    maxPrice = task.price;
-                    resultHeap = sdTaskHeaps[vram];
-                }
-            }
-        }
-
-        require(maxPrice > 0, "No available task");
-
-        TaskInQueue memory result = resultHeap.pop();
-        if (resultHeap.size() == 0) {
-            if (result.taskType == 0) {
-                delete sdTaskHeaps[result.vramLimit];
-                sdTaskVrams.remove(result.vramLimit);
-            } else if (result.taskType == 1) {
-                delete gptTaskHeaps[result.vramLimit];
-                gptTaskVrams.remove(result.vramLimit);
-            } else if (result.taskType == 2) {
-                delete sdFtTaskHeaps[result.gpuID];
-            }
-        }
-        taskHeap.remove(result.id);
-        return result;
+        _removeTask(taskIDCommitment);
+        return taskIDCommitment;
     }
 
-    function removeTask(uint taskId) public returns (TaskInQueue memory) {
-        require(msg.sender == taskContractAddress, "Not called by the task contract");
-        require(taskHeap.include(taskId), "Task is not in queue");
-
-        TaskInQueue memory task = taskHeap.remove(taskId);
-        if (task.taskType == 0) {
-            sdTaskHeaps[task.vramLimit].remove(taskId);
-            if (sdTaskHeaps[task.vramLimit].size() == 0) {
-                delete sdTaskHeaps[task.vramLimit];
-                sdTaskVrams.remove(task.vramLimit);
-            }
-        } else {
-            gptTaskHeaps[task.vramLimit].remove(taskId);
-            if (gptTaskHeaps[task.vramLimit].size() == 0) {
-                delete gptTaskHeaps[task.vramLimit];
-                gptTaskVrams.remove(task.vramLimit);
+    function _removeTask(bytes32 taskIDCommitment) internal {
+        bytes32 gpuID = taskGPUIDs[taskIDCommitment];
+        if (uint(gpuID) != 0) {
+            gpuIDTaskArray[gpuID].remove(taskIDCommitment);
+            if (gpuIDTaskArray[gpuID].length() == 0) {
+                delete gpuIDTaskArray[gpuID];
+                gpuIDs.remove(gpuID);
             }
         }
-
-        return task;
+        uint vram = taskVrams[taskIDCommitment];
+        vramTaskArray[vram].remove(taskIDCommitment);
+        if (vramTaskArray[vram].length() == 0) {
+            delete vramTaskArray[vram];
+            vrams.remove(vram);
+        }
+        taskIDCommitments.remove(taskIDCommitment);
+        delete taskGPUIDs[taskIDCommitment];
+        delete taskVrams[taskIDCommitment];
     }
 
-    function removeCheapestTask() public returns (TaskInQueue memory) {
+    function removeTask(bytes32 taskIDCommitment) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
-        require(taskHeap.size() > 0, "No available task");
+        require(taskIDCommitments.contains(taskIDCommitment), "Task not in queue");
+        _removeTask(taskIDCommitment);
+    }
 
-        TaskInQueue memory task = taskHeap.pop();
-        if (task.taskType == 0) {
-            sdTaskHeaps[task.vramLimit].remove(task.id);
-            if (sdTaskHeaps[task.vramLimit].size() == 0) {
-                delete sdTaskHeaps[task.vramLimit];
-                sdTaskVrams.remove(task.vramLimit);
-            }
-        } else {
-            gptTaskHeaps[task.vramLimit].remove(task.id);
-            if (gptTaskHeaps[task.vramLimit].size() == 0) {
-                delete gptTaskHeaps[task.vramLimit];
-                gptTaskVrams.remove(task.vramLimit);
+    function getCheapestTask() public view returns (bytes32) {
+        require(msg.sender == taskContractAddress, "Not called by the task contract");
+        require(taskIDCommitments.length() > 0, "No available task");
+        
+        // find cheapest task id commitment
+        bytes32 taskIDCommitment;
+        uint minPrice = 0;
+        for (uint i = 0; i < vrams.length(); i++) {
+            uint vram = vrams.at(i);
+            uint price = vramTaskArray[vram].minPrice();
+            if (minPrice == 0 || price < minPrice) {
+                TaskArray.Task[] memory tasks = vramTaskArray[vram].get(price);
+                taskIDCommitment = tasks[0].taskIDCommitment;
+                minPrice = price;
             }
         }
-
-        return task;
+        for (uint i = 0; i < gpuIDs.length(); i++) {
+            bytes32 gpuID = gpuIDs.at(i);
+            uint price = gpuIDTaskArray[gpuID].minPrice();
+            if (minPrice == 0 || price < minPrice) {
+                TaskArray.Task[] memory tasks = gpuIDTaskArray[gpuID].get(price);
+                taskIDCommitment = tasks[0].taskIDCommitment;
+                minPrice = price;
+            }
+        }
+        return taskIDCommitment;
     }
 }
