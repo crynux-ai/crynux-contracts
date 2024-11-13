@@ -40,6 +40,10 @@ contract VSSTask is Ownable {
 
     event TaskEndInvalidated(bytes32 taskIDCommitment, address selectedNode);
 
+    event TaskEndGroupSuccess(bytes32 taskIDCommitment);
+
+    event TaskEndGroupRefund(bytes32 taskIDCommitment);
+
     event TaskEndAborted(
         bytes32 taskIDCommitment,
         address abortIssuer,
@@ -709,7 +713,7 @@ contract VSSTask is Ownable {
             node.finishTask(taskInfo.selectedNode);
             delete nodeTasks[taskInfo.selectedNode];
             networkStats.taskFinished();
-            emit TaskEndSuccess(taskInfo.taskIDCommitment);
+            emit TaskEndGroupRefund(taskInfo.taskIDCommitment);
         } else if (status == TaskStatus.EndGroupSuccess) {
             for (uint i = 0; i < taskInfo.payments.length; i++) {
                 address nodeAddress = taskInfo.paymentAddresses[i];
@@ -720,7 +724,7 @@ contract VSSTask is Ownable {
             node.finishTask(taskInfo.selectedNode);
             delete nodeTasks[taskInfo.selectedNode];
             networkStats.taskFinished();
-            emit TaskEndSuccess(taskInfo.taskIDCommitment);
+            emit TaskEndGroupSuccess(taskInfo.taskIDCommitment);
         }
     }
 
