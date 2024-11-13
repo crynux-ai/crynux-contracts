@@ -38,7 +38,7 @@ contract VSSTask is Ownable {
 
     event TaskEndSuccess(bytes32 taskIDCommitment);
 
-    event TaskEndInvalidated(bytes32 taskIDCommitment, address selectedNode);
+    event TaskEndInvalidated(bytes32 taskIDCommitment);
 
     event TaskEndGroupSuccess(bytes32 taskIDCommitment);
 
@@ -701,10 +701,7 @@ contract VSSTask is Ownable {
             node.slash(taskInfo.selectedNode);
             delete nodeTasks[taskInfo.selectedNode];
             networkStats.taskFinished();
-            emit TaskEndInvalidated(
-                taskInfo.taskIDCommitment,
-                taskInfo.selectedNode
-            );
+            emit TaskEndInvalidated(taskInfo.taskIDCommitment);
         } else if (status == TaskStatus.EndGroupRefund) {
             (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
                 ""
