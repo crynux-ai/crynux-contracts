@@ -172,6 +172,12 @@ contract Node is Ownable {
             "Node already joined"
         );
 
+        require(publicKey.length == 64, "Invalid public key length");
+
+        uint derivedAddress = uint(keccak256(publicKey)) & 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+
+        require(derivedAddress == uint(uint160(msg.sender)), "Public key mismatch");
+
         // Check the staking
         uint token = msg.value;
         require(token >= requiredStakeAmount, "Staked amount is not enough");
@@ -197,6 +203,16 @@ contract Node is Ownable {
 
         markNodeAvailable(msg.sender);
         netStats.nodeJoined(msg.sender, gpuName, gpuVram);
+    }
+
+    function updateVersion(
+        string calldata version
+    ) public {
+        require(
+            getNodeStatus(msg.sender) != NodeStatus.Quit,
+            "Node has quitted"
+        );
+        nodesMap[msg.sender].version = version;
     }
 
     function quit() public {
