@@ -477,7 +477,6 @@ contract VSSTask is Ownable {
         );
 
         taskInfo.error = error;
-        taskInfo.finishBlocknum = block.number;
 
         changeTaskState(taskIDCommitment, TaskStatus.ErrorReported);
     }
@@ -495,7 +494,6 @@ contract VSSTask is Ownable {
         require(taskScore.length > 0, "Invalid task score");
 
         taskInfo.score = taskScore;
-        taskInfo.finishBlocknum = block.number;
 
         changeTaskState(taskIDCommitment, TaskStatus.ScoreReady);
     }
@@ -513,7 +511,6 @@ contract VSSTask is Ownable {
         );
 
         taskInfo.abortReason = abortReason;
-        taskInfo.finishBlocknum = block.number;
 
         changeTaskState(taskIDCommitment, TaskStatus.EndAborted);
     }
@@ -644,17 +641,20 @@ contract VSSTask is Ownable {
             networkStats.taskStarted();
             emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
         } else if (status == TaskStatus.ParametersUploaded) {
+            taskInfo.startBlocknum = block.number;
             emit TaskParametersUploaded(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode
             );
         } else if (status == TaskStatus.ScoreReady) {
+            taskInfo.finishBlocknum = block.number;
             emit TaskScoreReady(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode,
                 taskInfo.score
             );
         } else if (status == TaskStatus.ErrorReported) {
+            taskInfo.finishBlocknum = block.number;
             emit TaskErrorReported(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode,
@@ -679,6 +679,9 @@ contract VSSTask is Ownable {
                 // remove task from task queue
                 taskQueue.removeTask(taskIDCommitment);
                 networkStats.taskDequeue();
+            }
+            if (taskInfo.finishBlocknum == 0) {
+                taskInfo.finishBlocknum = block.number;
             }
             (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
                 ""
