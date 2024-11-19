@@ -289,6 +289,7 @@ contract VSSTask is Ownable {
         );
 
         if (taskInfo.status == TaskStatus.ErrorReported) {
+            taskInfo.abortReason = TaskAbortReason.IncorrectResult;
             changeTaskState(taskIDCommitment, TaskStatus.EndAborted);
         } else if (taskInfo.status == TaskStatus.ScoreReady) {
             changeTaskState(taskIDCommitment, TaskStatus.Validated);
@@ -455,6 +456,12 @@ contract VSSTask is Ownable {
                         qos.getTaskScoreLimit();
                     tasks[taskIDCommitment].payments.push(fee);
                 }
+            }
+        }
+
+        for (uint i = 0; i < finishedTaskCount; i++) {
+            if (finishedTaskStatus[i] == TaskStatus.EndAborted) {
+                tasks[finishedTasks[i].taskIDCommitment].abortReason = TaskAbortReason.IncorrectResult;
             }
         }
 
