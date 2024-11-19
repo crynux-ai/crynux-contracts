@@ -85,6 +85,7 @@ contract VSSTask is Ownable {
     }
 
     enum TaskAbortReason {
+        None,
         Timeout,
         ModelDownloadFailed,
         IncorrectResult,
@@ -92,6 +93,7 @@ contract VSSTask is Ownable {
     }
 
     enum TaskError {
+        None,
         ParametersValidationFailed
     }
 
