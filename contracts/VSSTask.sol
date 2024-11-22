@@ -121,8 +121,8 @@ contract VSSTask is Ownable {
         address[] paymentAddresses;
         uint[] payments;
         // useful for calculating qos score
-        uint startBlocknum;
-        uint finishBlocknum;
+        uint startTimestamp;
+        uint scoreReadyTimestamp;
     }
 
     mapping(bytes32 => TaskInfo) private tasks;
@@ -650,20 +650,20 @@ contract VSSTask is Ownable {
             networkStats.taskStarted();
             emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
         } else if (status == TaskStatus.ParametersUploaded) {
-            taskInfo.startBlocknum = block.number;
+            taskInfo.startTimestamp = block.timestamp;
             emit TaskParametersUploaded(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode
             );
         } else if (status == TaskStatus.ScoreReady) {
-            taskInfo.finishBlocknum = block.number;
+            taskInfo.scoreReadyTimestamp = block.timestamp;
             emit TaskScoreReady(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode,
                 taskInfo.score
             );
         } else if (status == TaskStatus.ErrorReported) {
-            taskInfo.finishBlocknum = block.number;
+            taskInfo.scoreReadyTimestamp = block.timestamp;
             emit TaskErrorReported(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode,
@@ -689,8 +689,8 @@ contract VSSTask is Ownable {
                 taskQueue.removeTask(taskIDCommitment);
                 networkStats.taskDequeue();
             }
-            if (taskInfo.finishBlocknum == 0) {
-                taskInfo.finishBlocknum = block.number;
+            if (taskInfo.scoreReadyTimestamp == 0) {
+                taskInfo.scoreReadyTimestamp = block.timestamp;
             }
             (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
                 ""
@@ -781,8 +781,8 @@ contract VSSTask is Ownable {
         TaskInfo storage taskInfo1 = tasks[taskIDCommitment1];
         TaskInfo storage taskInfo2 = tasks[taskIDCommitment2];
 
-        uint timeCost1 = taskInfo1.finishBlocknum - taskInfo1.startBlocknum;
-        uint timeCost2 = taskInfo2.finishBlocknum - taskInfo2.startBlocknum;
+        uint timeCost1 = taskInfo1.scoreReadyTimestamp - taskInfo1.startTimestamp;
+        uint timeCost2 = taskInfo2.scoreReadyTimestamp - taskInfo2.startTimestamp;
         if (timeCost1 == timeCost2) {
             return taskInfo1.sequence < taskInfo2.sequence;
         }
