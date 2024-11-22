@@ -121,6 +121,7 @@ contract VSSTask is Ownable {
         address[] paymentAddresses;
         uint[] payments;
         // useful for calculating qos score
+        uint createTimestamp;
         uint startTimestamp;
         uint scoreReadyTimestamp;
     }
@@ -229,6 +230,7 @@ contract VSSTask is Ownable {
         taskInfo.requiredGPUVRAM = requiredGPUVRAM;
         taskInfo.taskVersion = taskVersion;
         taskInfo.taskSize = taskSize;
+        taskInfo.createTimestamp = block.timestamp;
 
         taskInfo.sequence = nextSequence;
         nextSequence += 1;
