@@ -647,6 +647,7 @@ contract VSSTask is Ownable {
             }
         } else if (status == TaskStatus.Started) {
             nodeTasks[taskInfo.selectedNode] = taskIDCommitment;
+            node.startTask(taskInfo.selectedNode);
             networkStats.taskStarted();
             emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
         } else if (status == TaskStatus.ParametersUploaded) {
