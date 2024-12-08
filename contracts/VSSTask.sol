@@ -695,12 +695,14 @@ contract VSSTask is Ownable {
             if (taskInfo.scoreReadyTimestamp == 0) {
                 taskInfo.scoreReadyTimestamp = block.timestamp;
             }
-            (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
-                ""
-            );
-            require(success, "Token transfer failed");
-            node.finishTask(taskInfo.selectedNode);
-            delete nodeTasks[taskInfo.selectedNode];
+            if (taskInfo.selectedNode != address(0)) {
+                (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
+                    ""
+                );
+                require(success, "Token transfer failed");
+                node.finishTask(taskInfo.selectedNode);
+                delete nodeTasks[taskInfo.selectedNode];
+            }
             networkStats.taskFinished();
             emit TaskEndAborted(
                 taskInfo.taskIDCommitment,
