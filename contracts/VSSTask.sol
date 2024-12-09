@@ -702,8 +702,8 @@ contract VSSTask is Ownable {
                 require(success, "Token transfer failed");
                 node.finishTask(taskInfo.selectedNode);
                 delete nodeTasks[taskInfo.selectedNode];
+                networkStats.taskFinished();
             }
-            networkStats.taskFinished();
             emit TaskEndAborted(
                 taskInfo.taskIDCommitment,
                 msg.sender,
