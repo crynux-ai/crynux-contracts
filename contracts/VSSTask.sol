@@ -181,6 +181,7 @@ contract VSSTask is Ownable {
             )
         returns (bytes32 taskIDCommitment) {
             networkStats.taskDequeue();
+            tasks[taskIDCommitment].selectedNode = root;
             changeTaskState(taskIDCommitment, TaskStatus.Started);
         } catch Error(string memory reason) {
             string memory target = "No available task";
