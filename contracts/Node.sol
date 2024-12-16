@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./QOS.sol";
 import "./libs/Random.sol";
 import "./NetworkStats.sol";
+import "./libs/Version.sol";
 
 abstract contract TaskWithCallback {
     function nodeAvailableCallback(address root) external virtual;
@@ -43,7 +44,7 @@ contract Node is Ownable {
         bytes32 gpuID;
         GPUInfo gpu;
         uint score;
-        string version;
+        uint[3] version;
         bytes publicKey;
         string lastModelID;
     }
@@ -163,7 +164,7 @@ contract Node is Ownable {
     function join(
         string calldata gpuName,
         uint gpuVram,
-        string calldata version,
+        uint[3] calldata version,
         bytes calldata publicKey
     ) public payable {
         require(allNodes.length() < maxNodesAllowed, "Network is full");
@@ -206,7 +207,7 @@ contract Node is Ownable {
     }
 
     function updateVersion(
-        string calldata version
+        uint[3] calldata version
     ) public {
         require(
             getNodeStatus(msg.sender) != NodeStatus.Quit,
@@ -362,7 +363,7 @@ contract Node is Ownable {
 
     function filterNodesByGPUID(
         bytes32 gpuID,
-        string calldata taskVersion
+        uint[3] calldata taskVersion
     ) private view returns (address[] memory, uint[] memory) {
         uint length = _gpuIDNodesIndex[gpuID].length();
         require(length > 0, "No available node");
@@ -373,10 +374,8 @@ contract Node is Ownable {
 
         for (uint i = 0; i < length; i++) {
             address nodeAddress = _gpuIDNodesIndex[gpuID].at(i);
-            string memory nodeVersion = nodesMap[nodeAddress].version;
-            if (
-                keccak256(bytes(nodeVersion)) == keccak256(bytes(taskVersion))
-            ) {
+            uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
+            if (Version.matchVersion(nodeVersion, taskVersion)) {
                 uint score = nodesMap[nodeAddress].score;
                 nodes[count] = nodeAddress;
                 scores[count] = score;
@@ -397,7 +396,7 @@ contract Node is Ownable {
 
     function filterNodesByVram(
         uint minimumVRAM,
-        string calldata taskVersion
+        uint[3] calldata taskVersion
     ) private view returns (address[] memory, uint[] memory) {
         uint length = _availableNodes.length();
         require(length > 0, "No available node");
@@ -411,11 +410,8 @@ contract Node is Ownable {
             if (vram >= minimumVRAM) {
                 for (uint j = 0; j < _gpuVramNodesIndex[vram].length(); j++) {
                     address nodeAddress = _gpuVramNodesIndex[vram].at(j);
-                    string memory nodeVersion = nodesMap[nodeAddress].version;
-                    if (
-                        keccak256(bytes(nodeVersion)) ==
-                        keccak256(bytes(taskVersion))
-                    ) {
+                    uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
+                    if (Version.matchVersion(nodeVersion, taskVersion)) {
                         uint score = nodesMap[nodeAddress].score;
                         nodes[count] = nodeAddress;
                         scores[count] = score;
@@ -456,7 +452,7 @@ contract Node is Ownable {
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
-        string calldata taskVersion,
+        uint[3] calldata taskVersion,
         string calldata modelID
     ) external returns (address) {
         generator.manualSeed(seed);

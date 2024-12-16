@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./libs/TaskArray.sol";
+import "./libs/Version.sol";
 
 contract TaskQueue is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -61,7 +62,7 @@ contract TaskQueue is Ownable {
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
-        string calldata taskVersion
+        uint[3] calldata taskVersion
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskIDCommitments.length() < sizeLimit, "Task queue is full");
@@ -90,7 +91,7 @@ contract TaskQueue is Ownable {
         }
     }
 
-    function popTask(string calldata gpuName, uint gpuVRAM, string calldata version, string calldata lastModelID) public returns (bytes32) {
+    function popTask(string calldata gpuName, uint gpuVRAM, uint[3] calldata version, string calldata lastModelID) public returns (bytes32) {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskIDCommitments.length() > 0, "No available task");
 
@@ -104,7 +105,8 @@ contract TaskQueue is Ownable {
             // task id commitment which only match the task version
             bytes32 secondTaskIDCommitment;
             for (uint i = 0; i < tasks.length; i++) {
-                if (keccak256(bytes(version)) == keccak256(bytes(tasks[i].taskVersion))) {
+                uint[3] memory taskVersion = tasks[i].taskVersion;
+                if (Version.matchVersion(version, taskVersion)) {
                     if (uint(secondTaskIDCommitment) == 0) {
                         secondTaskIDCommitment = tasks[i].taskIDCommitment;
                     }
@@ -130,7 +132,8 @@ contract TaskQueue is Ownable {
                         // task id commitment which only match the task version
                         bytes32 secondTaskIDCommitment;
                         for (uint j = 0; j < tasks.length; j++) {
-                            if (keccak256(bytes(version)) == keccak256(bytes(tasks[j].taskVersion))) {
+                            uint[3] memory taskVersion = tasks[i].taskVersion;
+                            if (Version.matchVersion(version, taskVersion)) {
                                 if (uint(secondTaskIDCommitment) == 0) {
                                     secondTaskIDCommitment = tasks[j].taskIDCommitment;
                                 }

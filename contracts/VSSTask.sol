@@ -114,7 +114,7 @@ contract VSSTask is Ownable {
         uint minimumVRAM;
         string requiredGPU;
         uint requiredGPUVRAM;
-        string taskVersion;
+        uint[3] taskVersion;
         TaskAbortReason abortReason;
         TaskError error;
         // record payment infomation in group validate
@@ -201,7 +201,7 @@ contract VSSTask is Ownable {
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
-        string calldata taskVersion,
+        uint[3] calldata taskVersion,
         uint taskSize
     ) public payable {
         if (taskType == TaskType.LLM || taskType == TaskType.SD_FT) {

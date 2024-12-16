@@ -18,7 +18,7 @@ library TaskArray {
         uint minimumVRAM;
         string requiredGPU;
         uint requiredGPUVRAM;
-        string taskVersion;
+        uint[3] taskVersion;
     }
 
     // tasks with the same price
