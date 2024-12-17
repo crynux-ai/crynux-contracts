@@ -47,6 +47,7 @@ contract Node is Ownable {
         uint[3] version;
         bytes publicKey;
         string lastModelID;
+        string[] localModelIDs;
     }
 
     event NodeSlashed(address nodeAddress);
@@ -58,15 +59,21 @@ contract Node is Ownable {
     // store all nodes info
     EnumerableSet.AddressSet private allNodes;
     mapping(address => NodeInfo) private nodesMap;
+    // store all nodes indexed by gpu vram
+    EnumerableSet.UintSet private _allGPUVramSet;
+    mapping(uint => EnumerableSet.AddressSet) _allGPUVramNodesIndex;
+    // store all nodes indexed by gpu type
+    EnumerableSet.Bytes32Set private _allGPUIDSet;
+    mapping(bytes32 => EnumerableSet.AddressSet) private _allGPUIDNodesIndex;
 
     // store all available nodes;
     EnumerableSet.AddressSet private _availableNodes;
     // store available nodes indexed by gpu vram
     EnumerableSet.UintSet private _availableGPUVramSet;
-    mapping(uint => EnumerableSet.AddressSet) _gpuVramNodesIndex;
+    mapping(uint => EnumerableSet.AddressSet) _availableGPUVramNodesIndex;
     // store available nodes indexed by gpu type (gpuID)
     EnumerableSet.Bytes32Set private _availableGPUIDSet;
-    mapping(bytes32 => EnumerableSet.AddressSet) private _gpuIDNodesIndex;
+    mapping(bytes32 => EnumerableSet.AddressSet) private _availableGPUIDNodesIndex;
 
     address private taskContractAddress;
 
@@ -95,7 +102,7 @@ contract Node is Ownable {
         GPUInfo[] memory res = new GPUInfo[](length);
         for (uint i = 0; i < length; i++) {
             bytes32 gpuID = _availableGPUIDSet.at(i);
-            address nodeAddress = _gpuIDNodesIndex[gpuID].at(0);
+            address nodeAddress = _availableGPUIDNodesIndex[gpuID].at(0);
             res[i] = nodesMap[nodeAddress].gpu;
         }
         return res;
@@ -105,7 +112,9 @@ contract Node is Ownable {
         return _availableNodes.values();
     }
 
-    function getNodeStatus(address nodeAddress) public view returns (NodeStatus) {
+    function getNodeStatus(
+        address nodeAddress
+    ) public view returns (NodeStatus) {
         return nodesMap[nodeAddress].status;
     }
 
@@ -119,11 +128,11 @@ contract Node is Ownable {
 
         // index node by gpu memory
         _availableGPUVramSet.add(vram);
-        _gpuVramNodesIndex[vram].add(nodeAddress);
+        _availableGPUVramNodesIndex[vram].add(nodeAddress);
 
         // index node by gpu ID
         _availableGPUIDSet.add(gpuID);
-        _gpuIDNodesIndex[gpuID].add(nodeAddress);
+        _availableGPUIDNodesIndex[gpuID].add(nodeAddress);
 
         // add node to available nodes set
         _availableNodes.add(nodeAddress);
@@ -140,12 +149,12 @@ contract Node is Ownable {
         bytes32 gpuID = nodesMap[nodeAddress].gpuID;
 
         // remove node from gpu id and vram index
-        _gpuIDNodesIndex[gpuID].remove(nodeAddress);
-        _gpuVramNodesIndex[vram].remove(nodeAddress);
-        if (_gpuIDNodesIndex[gpuID].length() == 0) {
+        _availableGPUIDNodesIndex[gpuID].remove(nodeAddress);
+        _availableGPUVramNodesIndex[vram].remove(nodeAddress);
+        if (_availableGPUIDNodesIndex[gpuID].length() == 0) {
             _availableGPUIDSet.remove(gpuID);
         }
-        if (_gpuVramNodesIndex[vram].length() == 0) {
+        if (_availableGPUVramNodesIndex[vram].length() == 0) {
             _availableGPUVramSet.remove(vram);
         }
 
@@ -155,9 +164,39 @@ contract Node is Ownable {
         netStats.nodeUnavailable();
     }
 
+    function addNode(address nodeAddress) private {
+        string memory gpuName = nodesMap[nodeAddress].gpu.name;
+        uint vram = nodesMap[nodeAddress].gpu.vram;
+        bytes32 gpuID = nodesMap[nodeAddress].gpuID;
+
+        allNodes.add(nodeAddress);
+
+        // index node by gpu memory
+        _allGPUVramSet.add(vram);
+        _allGPUVramNodesIndex[vram].add(nodeAddress);
+        // index node by gpu ID
+        _allGPUIDSet.add(gpuID);
+        _allGPUIDNodesIndex[gpuID].add(nodeAddress);
+
+        netStats.nodeJoined(msg.sender, gpuName, vram);
+    }
+
     function removeNode(address nodeAddress) private {
-        delete nodesMap[nodeAddress];
+        uint vram = nodesMap[nodeAddress].gpu.vram;
+        bytes32 gpuID = nodesMap[nodeAddress].gpuID;
+
+        // remove node from gpu id and vram index
+        _allGPUIDNodesIndex[gpuID].remove(nodeAddress);
+        _allGPUVramNodesIndex[vram].remove(nodeAddress);
+        if (_allGPUIDNodesIndex[gpuID].length() == 0) {
+            _allGPUIDSet.remove(gpuID);
+        }
+        if (_allGPUVramNodesIndex[vram].length() == 0) {
+            _allGPUVramSet.remove(vram);
+        }
+
         allNodes.remove(nodeAddress);
+        delete nodesMap[nodeAddress];
         netStats.nodeQuit();
     }
 
@@ -175,9 +214,13 @@ contract Node is Ownable {
 
         require(publicKey.length == 64, "Invalid public key length");
 
-        uint derivedAddress = uint(keccak256(publicKey)) & 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+        uint derivedAddress = uint(keccak256(publicKey)) &
+            0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-        require(derivedAddress == uint(uint160(msg.sender)), "Public key mismatch");
+        require(
+            derivedAddress == uint(uint160(msg.sender)),
+            "Public key mismatch"
+        );
 
         // Check the staking
         uint token = msg.value;
@@ -191,24 +234,18 @@ contract Node is Ownable {
         if (score == 0) {
             score += 1;
         }
-        nodesMap[msg.sender] = NodeInfo(
-            NodeStatus.Available,
-            gpuID,
-            GPUInfo(gpuName, gpuVram),
-            score,
-            version,
-            publicKey,
-            ""
-        );
-        allNodes.add(msg.sender);
+        nodesMap[msg.sender].status = NodeStatus.Available;
+        nodesMap[msg.sender].gpuID = gpuID;
+        nodesMap[msg.sender].gpu = GPUInfo(gpuName, gpuVram);
+        nodesMap[msg.sender].score = score;
+        nodesMap[msg.sender].version = version;
+        nodesMap[msg.sender].publicKey = publicKey;
 
+        addNode(msg.sender);
         markNodeAvailable(msg.sender);
-        netStats.nodeJoined(msg.sender, gpuName, gpuVram);
     }
 
-    function updateVersion(
-        uint[3] calldata version
-    ) public {
+    function updateVersion(uint[3] calldata version) public {
         require(
             getNodeStatus(msg.sender) != NodeStatus.Quit,
             "Node has quitted"
@@ -365,7 +402,7 @@ contract Node is Ownable {
         bytes32 gpuID,
         uint[3] calldata taskVersion
     ) private view returns (address[] memory, uint[] memory) {
-        uint length = _gpuIDNodesIndex[gpuID].length();
+        uint length = _availableGPUIDNodesIndex[gpuID].length();
         require(length > 0, "No available node");
 
         uint count = 0;
@@ -373,7 +410,7 @@ contract Node is Ownable {
         uint[] memory scores = new uint[](length);
 
         for (uint i = 0; i < length; i++) {
-            address nodeAddress = _gpuIDNodesIndex[gpuID].at(i);
+            address nodeAddress = _availableGPUIDNodesIndex[gpuID].at(i);
             uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
             if (Version.matchVersion(nodeVersion, taskVersion)) {
                 uint score = nodesMap[nodeAddress].score;
@@ -408,8 +445,8 @@ contract Node is Ownable {
         for (uint i = 0; i < _availableGPUVramSet.length(); i++) {
             uint vram = _availableGPUVramSet.at(i);
             if (vram >= minimumVRAM) {
-                for (uint j = 0; j < _gpuVramNodesIndex[vram].length(); j++) {
-                    address nodeAddress = _gpuVramNodesIndex[vram].at(j);
+                for (uint j = 0; j < _availableGPUVramNodesIndex[vram].length(); j++) {
+                    address nodeAddress = _availableGPUVramNodesIndex[vram].at(j);
                     uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
                     if (Version.matchVersion(nodeVersion, taskVersion)) {
                         uint score = nodesMap[nodeAddress].score;
@@ -432,11 +469,61 @@ contract Node is Ownable {
         return (nodes, scores);
     }
 
+    function filterNodesByModelID(
+        address[] memory nodes,
+        uint[] memory scores,
+        string calldata modelID
+    ) internal view returns (address[] memory, uint[] memory) {
+        // filter nodes whos localModelIDs contains modelID
+        // if all nodes localModelIDs don't contain modelID, return all the nodes
+        uint count = 0;
+        address[] memory resultNodes = new address[](nodes.length);
+        uint[] memory resultScores = new uint[](nodes.length);
+
+        for (uint i = 0; i < nodes.length; i++) {
+            address nodeAddress = nodes[i];
+            bool contains = false;
+            for (
+                uint j = 0;
+                j < nodesMap[nodeAddress].localModelIDs.length;
+                j++
+            ) {
+                string memory localModelID = nodesMap[nodeAddress]
+                    .localModelIDs[j];
+                if (
+                    keccak256(bytes(localModelID)) == keccak256(bytes(modelID))
+                ) {
+                    contains = true;
+                    break;
+                }
+            }
+            if (contains) {
+                resultNodes[count] = nodeAddress;
+                resultScores[count] = scores[i];
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            return (nodes, scores);
+        }
+
+        // resize array by assembly
+        uint subSize = nodes.length - count;
+        assembly {
+            mstore(resultNodes, sub(mload(resultNodes), subSize))
+            mstore(resultScores, sub(mload(resultScores), subSize))
+        }
+
+        return (resultNodes, resultScores);
+    }
+
     function addScoreByModelID(
         address[] memory nodes,
         uint[] memory scores,
         string calldata modelID
     ) internal view returns (address[] memory, uint[] memory) {
+        // add extra score to nodes with the same last model ID as the current model ID
         for (uint i = 0; i < nodes.length; i++) {
             address nodeAddress = nodes[i];
             string memory lastModelID = nodesMap[nodeAddress].lastModelID;
@@ -447,7 +534,7 @@ contract Node is Ownable {
         return (nodes, scores);
     }
 
-    function randomSelectNode(
+    function randomSelectAvailableNode(
         bytes32 seed,
         uint minimumVRAM,
         string calldata requiredGPU,
@@ -466,7 +553,7 @@ contract Node is Ownable {
                     address[] memory nodes,
                     uint[] memory scores
                 ) = filterNodesByGPUID(gpuID, taskVersion);
-                // add extra score to nodes with the same last model ID as the current model ID
+                (nodes, scores) = filterNodesByModelID(nodes, scores, modelID);
                 addScoreByModelID(nodes, scores, modelID);
                 uint index = generator.multinomial(scores, 0, scores.length);
                 return nodes[index];
@@ -478,7 +565,7 @@ contract Node is Ownable {
                 minimumVRAM,
                 taskVersion
             );
-            // add extra score to nodes with the same last model ID as the current model ID
+            (nodes, scores) = filterNodesByModelID(nodes, scores, modelID);
             addScoreByModelID(nodes, scores, modelID);
             uint index = generator.multinomial(scores, 0, scores.length);
             return nodes[index];

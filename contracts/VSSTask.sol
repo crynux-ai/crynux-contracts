@@ -251,7 +251,7 @@ contract VSSTask is Ownable {
         );
 
         try
-            node.randomSelectNode(
+            node.randomSelectAvailableNode(
                 seed,
                 minimumVRAM,
                 requiredGPU,
