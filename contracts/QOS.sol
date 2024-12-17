@@ -25,7 +25,7 @@ contract QOS is Ownable {
     uint private kickoutThreshold;
 
     constructor() Ownable(msg.sender) {
-        kickoutThreshold = 20;
+        kickoutThreshold = 10;
     }
 
     function updateNodeContractAddress(address nodeContract) public onlyOwner {
@@ -135,13 +135,13 @@ contract QOS is Ownable {
         uint totalScore = getRecentTaskScore(nodeAddress);
         uint taskCount = nodeTaskPoolSize[nodeAddress];
         if (taskCount < TASK_SCORE_POOL_SIZE) {
-            totalScore += (TASK_SCORE_POOL_SIZE - taskCount) * TASK_SCORE_REWARDS[0] * 2;
+            totalScore += (TASK_SCORE_POOL_SIZE - taskCount) * TASK_SCORE_REWARDS[0];
         }
 
         return totalScore <= kickoutThreshold;
     }
 
     function getTaskScoreLimit() public view returns (uint) {
-        return (TASK_SCORE_REWARDS[0] + TASK_SCORE_REWARDS[1] + TASK_SCORE_REWARDS[2]) * 2;
+        return TASK_SCORE_REWARDS[0] + TASK_SCORE_REWARDS[1] + TASK_SCORE_REWARDS[2];
     }
 }

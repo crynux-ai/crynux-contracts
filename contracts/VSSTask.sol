@@ -293,6 +293,8 @@ contract VSSTask is Ownable {
             false
         );
 
+        qos.addTaskScore(taskInfo.selectedNode, 0);
+
         if (taskInfo.status == TaskStatus.ErrorReported) {
             taskInfo.abortReason = TaskAbortReason.IncorrectResult;
             changeTaskState(taskIDCommitment, TaskStatus.EndAborted);
