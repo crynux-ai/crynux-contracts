@@ -51,6 +51,11 @@ contract VSSTask is Ownable {
         TaskAbortReason abortReason
     );
 
+    event DownloadModel(
+        address nodeAddress,
+        string modelID
+    );
+
     /* Task type */
     enum TaskType {
         SD,
@@ -249,6 +254,20 @@ contract VSSTask is Ownable {
                 bytes(modelID)
             )
         );
+
+        address[] memory nodesToDownload = node.randomSelectNodes(
+            seed,
+            minimumVRAM,
+            requiredGPU,
+            requiredGPUVRAM,
+            taskVersion,
+            modelID,
+            5
+        );
+        for (uint i = 0; i < nodesToDownload.length; i++) {
+            emit DownloadModel(nodesToDownload[i], modelID);
+            node.addLocalModel(nodesToDownload[i], modelID);
+        }
 
         try
             node.randomSelectAvailableNode(
