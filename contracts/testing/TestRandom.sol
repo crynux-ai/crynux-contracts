@@ -1,68 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.18;
 
-import "../libs/Random.sol";
+import "../Random.sol";
 
 
 contract TestRandom {
-    using Random for Random.Generator;
-
-    Random.Generator public generator = Random.Generator(bytes32(uint(0)), 0);
     uint public intRes = 0;
-    bool public boolRes;
+    uint[] public arrRes;
 
-    function testManualSeed(uint value) public {
-        bytes32 seed = bytes32(value);
-        generator.manualSeed(seed);
+    Random public random;
+
+    constructor() {
+        random = new Random();
     }
 
-    function testRandint() public  {
-        intRes = generator.randint();
+    function manualSeed(bytes32 s) public {
+        random.manualSeed(s);
     }
 
-    function testRandrange() public {
-        intRes = generator.randrange(0, 3);
+    function getSeed() public view returns (bytes32) {
+        return random.getSeed();
     }
 
-    function testMultinomial() public {
-        uint[] memory weights = new uint[](3);
-        weights[0] = 1;
-        weights[1] = 2;
-        weights[2] = 3;
-        intRes = generator.multinomial(weights, 0, 3);
+    function getNonce() public view returns (uint) {
+        return random.getNonce();
     }
 
-    function wrongRandrange() public {
-        generator.randrange(0, 0);
+    function randint() public  {
+        intRes = random.randint();
     }
 
-    function testWrongRandrange() public {
-        (boolRes, ) = address(this).call(abi.encodePacked(this.wrongRandrange.selector));
+    function randrange(uint start, uint end) public {
+        intRes = random.randrange(start, end);
     }
 
-    function wrongMultinomial() public {
-        uint[] memory weights = new uint[](3);
-        weights[0] = 1;
-        weights[1] = 2;
-        weights[2] = 3;
-
-        generator.multinomial(weights, 0, 0);
+    function choice(uint[] memory weights) public {
+        intRes = random.choice(weights);
     }
 
-    function wrongMultinomialWeights() public {
-        uint[] memory weights = new uint[](3);
-        weights[0] = 0;
-        weights[1] = 2;
-        weights[2] = 3;
-
-        generator.multinomial(weights, 0, 3);
-    }
-
-    function testWrongMultinomial() public {
-        (boolRes, ) = address(this).call(abi.encodePacked(this.wrongMultinomial.selector));
-    }
-
-    function testWrongMultinomialWeights() public {
-        (boolRes, ) = address(this).call(abi.encodePacked(this.wrongMultinomialWeights.selector));
+    function choices(uint[] memory weights, uint k) public {
+        arrRes = random.choices(weights, k);
     }
 }

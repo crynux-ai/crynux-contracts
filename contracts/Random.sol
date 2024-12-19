@@ -2,6 +2,8 @@
 pragma solidity ^0.8.18;
 
 import "./libs/Heap.sol";
+import { SD59x18, sd, intoUint256 } from "@prb/math/src/SD59x18.sol";
+
 
 contract Random {
     using Heap for Heap.MaxUintToUintKVHeap;
@@ -17,6 +19,14 @@ contract Random {
 
     function manualSeed(bytes32 s) public {
         generator.seed = s;
+    }
+
+    function getSeed() public view returns (bytes32) {
+        return generator.seed;
+    }
+
+    function getNonce() public view returns (uint) {
+        return generator.nonce;
     }
 
     function _randint() internal returns (uint) {
@@ -39,32 +49,14 @@ contract Random {
         return _randrange(start, end);
     }
 
-    // copyed from https://gist.github.com/k06a/af6c58fe6634e48e53929451877eb5b5
-    function log_2_rand_0_1(uint256 x) public pure returns (uint256) {
-        x &= 0xFFFFFFFFFFFFFFFF;
-        require(x > 0);
-        
-        uint256 a = 63;
-        while ((x >> a) == 0) {
-            a--;
-        }
-        
-        uint256 result = a - 64 << 64;
-        uint256 ux = x << 127 - a;
-        for (uint256 bit = 63; bit > 43; bit--) {
-            ux *= ux;
-            result |= ((ux >> 255) << bit);
-            ux >>= 127 + (ux >> 255);
-        }
-        
-        return uint256((-int256(result) * 1e18) >> 64);
-    }
-
     function choice(uint[] memory weights) public returns (uint) {
         require(weights.length > 0);
         uint[] memory normWeights = new uint[](weights.length);
         for (uint i = 0; i < weights.length; i++) {
-            normWeights[i] = log_2_rand_0_1(_randrange(1, 0x10000000000000000)) / weights[i];
+            // 18 fixed point number, (0, 1e18) => (0, 1)
+            SD59x18 r = sd(int256(_randrange(1, 1e18)));
+            SD59x18 log2 = -r.log2();
+            normWeights[i] = intoUint256(log2) / weights[i];
         }
 
         uint res = 0;
@@ -88,7 +80,9 @@ contract Random {
         uint[] memory results = new uint[](k);
         uint[] memory normWeights = new uint[](weights.length);
         for (uint i = 0; i < weights.length; i++) {
-            normWeights[i] = log_2_rand_0_1(_randrange(1, 0x10000000000000000)) / weights[i];
+            SD59x18 r = sd(int256(_randrange(1, 1e18)));
+            SD59x18 log2 = -r.log2();
+            normWeights[i] = intoUint256(log2) / weights[i];
         }
 
         if (k == 1) {
