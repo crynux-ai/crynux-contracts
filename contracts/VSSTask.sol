@@ -266,7 +266,6 @@ contract VSSTask is Ownable {
         );
         for (uint i = 0; i < nodesToDownload.length; i++) {
             emit DownloadModel(nodesToDownload[i], modelID);
-            node.addLocalModel(nodesToDownload[i], modelID);
         }
 
         try

@@ -184,6 +184,10 @@ contract Node is Ownable {
         // index node by gpu ID
         _allGPUIDSet.add(gpuID);
         _allGPUIDNodesIndex[gpuID].add(nodeAddress);
+        // index node local model ids
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            addLocalModelIndex(nodeAddress, nodesMap[nodeAddress].localModelIDs[i]);
+        }
 
         netStats.nodeJoined(msg.sender, gpuName, vram);
     }
@@ -201,22 +205,46 @@ contract Node is Ownable {
         if (_allGPUVramNodesIndex[vram].length() == 0) {
             _allGPUVramSet.remove(vram);
         }
+        // remove node local model ids
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            removeLocalModelIndex(nodeAddress, nodesMap[nodeAddress].localModelIDs[i]);
+        }
 
         allNodes.remove(nodeAddress);
         delete nodesMap[nodeAddress];
         netStats.nodeQuit();
     }
 
-    function addLocalModel(
+    function addLocalModelIndex(
         address nodeAddress,
-        string calldata modelID
-    ) public {
+        string memory modelID
+    ) internal {
         require(allNodes.contains(nodeAddress), "Node has quitted");
         bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
         _modelIDSet.add(modelIDHash);
-        if (!_modelIDNodesIndex[modelIDHash].contains(nodeAddress)) {
-            _modelIDNodesIndex[modelIDHash].add(nodeAddress);
-            nodesMap[nodeAddress].localModelIDs.push(modelID);
+        _modelIDNodesIndex[modelIDHash].add(nodeAddress);
+    }
+
+    function removeLocalModelIndex(
+        address nodeAddress,
+        string memory modelID
+    ) internal {
+        require(allNodes.contains(nodeAddress), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        _modelIDNodesIndex[modelIDHash].remove(nodeAddress);
+        if (_modelIDNodesIndex[modelIDHash].length() == 0) {
+            _modelIDSet.remove(modelIDHash);
+            delete _modelIDNodesIndex[modelIDHash];
+        }
+    }
+
+    function reportModelDownloaded(string calldata modelID) public {
+        require(allNodes.contains(msg.sender), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        if (!_modelIDNodesIndex[modelIDHash].contains(msg.sender)) {
+            _modelIDSet.add(modelIDHash);
+            _modelIDNodesIndex[modelIDHash].add(msg.sender);
+            nodesMap[msg.sender].localModelIDs.push(modelID);
         }
     }
 
@@ -224,7 +252,8 @@ contract Node is Ownable {
         string calldata gpuName,
         uint gpuVram,
         uint[3] calldata version,
-        bytes calldata publicKey
+        bytes calldata publicKey,
+        string[] calldata localModelIDs
     ) public payable {
         // TODO: add param localModelIDs in join method
         require(allNodes.length() < maxNodesAllowed, "Network is full");
@@ -261,6 +290,7 @@ contract Node is Ownable {
         nodesMap[msg.sender].score = score;
         nodesMap[msg.sender].version = version;
         nodesMap[msg.sender].publicKey = publicKey;
+        nodesMap[msg.sender].localModelIDs = localModelIDs;
 
         addNode(msg.sender);
         markNodeAvailable(msg.sender);
@@ -597,7 +627,9 @@ contract Node is Ownable {
 
         for (uint i = 0; i < nodes.length; i++) {
             address nodeAddress = nodes[i];
-            bool contains = _modelIDNodesIndex[modelIDHash].contains(nodeAddress);
+            bool contains = _modelIDNodesIndex[modelIDHash].contains(
+                nodeAddress
+            );
             if (contains) {
                 resultNodes[count] = nodeAddress;
                 resultScores[count] = scores[i];
@@ -635,7 +667,9 @@ contract Node is Ownable {
 
         for (uint i = 0; i < nodes.length; i++) {
             address nodeAddress = nodes[i];
-            bool contains = _modelIDNodesIndex[modelIDHash].contains(nodeAddress);
+            bool contains = _modelIDNodesIndex[modelIDHash].contains(
+                nodeAddress
+            );
             if (!contains) {
                 resultNodes[count] = nodeAddress;
                 resultScores[count] = scores[i];
@@ -754,10 +788,10 @@ contract Node is Ownable {
                 return new address[](0);
             }
         } else {
-            (
-                address[] memory nodes,
-                uint[] memory scores
-            ) = filterNodesByVram(minimumVRAM, taskVersion);
+            (address[] memory nodes, uint[] memory scores) = filterNodesByVram(
+                minimumVRAM,
+                taskVersion
+            );
             (nodes, scores) = selectNodesWithoutModelID(nodes, scores, modelID);
             if (nodes.length < count) {
                 return nodes;
@@ -769,6 +803,5 @@ contract Node is Ownable {
             }
             return results;
         }
-
     }
 }
