@@ -14,7 +14,7 @@ library TaskArray {
         bytes32 taskIDCommitment;
         uint taskFee;
         uint taskSize;
-        string modelID;
+        string[] modelIDs;
         uint minimumVRAM;
         string requiredGPU;
         uint requiredGPUVRAM;

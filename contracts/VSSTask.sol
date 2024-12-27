@@ -115,7 +115,7 @@ contract VSSTask is Ownable {
         bytes score;
         uint taskFee;
         uint taskSize;
-        string modelID;
+        string[] modelIDs;
         uint minimumVRAM;
         string requiredGPU;
         uint requiredGPUVRAM;
@@ -182,7 +182,7 @@ contract VSSTask is Ownable {
                 nodeInfo.gpu.name,
                 nodeInfo.gpu.vram,
                 nodeInfo.version,
-                nodeInfo.lastModelID
+                nodeInfo.lastModelIDs
             )
         returns (bytes32 taskIDCommitment) {
             networkStats.taskDequeue();
@@ -202,7 +202,7 @@ contract VSSTask is Ownable {
         TaskType taskType,
         bytes32 taskIDCommitment,
         bytes32 nonce,
-        string calldata modelID,
+        string[] calldata modelIDs,
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
@@ -230,7 +230,7 @@ contract VSSTask is Ownable {
         taskInfo.nonce = nonce;
         taskInfo.timeout = block.timestamp + timeout;
         taskInfo.taskFee = taskFee;
-        taskInfo.modelID = modelID;
+        taskInfo.modelIDs = modelIDs;
         taskInfo.minimumVRAM = minimumVRAM;
         taskInfo.requiredGPU = requiredGPU;
         taskInfo.requiredGPUVRAM = requiredGPUVRAM;
@@ -248,25 +248,12 @@ contract VSSTask is Ownable {
         networkStats.taskCreated();
 
         bytes32 seed = keccak256(
-            abi.encodePacked(
-                blockhash(block.number - 1),
+            abi.encode(
+                block.number - 1,
                 taskIDCommitment,
-                bytes(modelID)
+                modelIDs
             )
         );
-
-        address[] memory nodesToDownload = node.randomSelectNodes(
-            seed,
-            minimumVRAM,
-            requiredGPU,
-            requiredGPUVRAM,
-            taskVersion,
-            modelID,
-            5
-        );
-        for (uint i = 0; i < nodesToDownload.length; i++) {
-            emit DownloadModel(nodesToDownload[i], modelID);
-        }
 
         try
             node.randomSelectAvailableNode(
@@ -275,7 +262,7 @@ contract VSSTask is Ownable {
                 requiredGPU,
                 requiredGPUVRAM,
                 taskVersion,
-                modelID
+                modelIDs
             )
         returns (address nodeAddress) {
             tasks[taskIDCommitment].selectedNode = nodeAddress;
@@ -653,7 +640,7 @@ contract VSSTask is Ownable {
                 taskIDCommitment,
                 taskInfo.taskFee,
                 taskInfo.taskSize,
-                taskInfo.modelID,
+                taskInfo.modelIDs,
                 taskInfo.minimumVRAM,
                 taskInfo.requiredGPU,
                 taskInfo.requiredGPUVRAM,
@@ -673,6 +660,34 @@ contract VSSTask is Ownable {
             node.startTask(taskInfo.selectedNode);
             networkStats.taskStarted();
             emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
+
+            for (uint i = 0; i < taskInfo.modelIDs.length; i++) {
+                string memory modelID = taskInfo.modelIDs[i];
+                if (!node.nodeContainsModelID(taskInfo.selectedNode, modelID)) {
+                    emit DownloadModel(taskInfo.selectedNode, modelID);
+                    bytes32 seed = keccak256(
+                        abi.encode(
+                            block.number - 1,
+                            taskIDCommitment,
+                            modelID
+                        )
+                    );
+                    address[] memory nodesToDownload = node.randomSelectNodesWithoutModelID(
+                        seed,
+                        taskInfo.minimumVRAM,
+                        taskInfo.requiredGPU,
+                        taskInfo.requiredGPUVRAM,
+                        taskInfo.taskVersion,
+                        modelID,
+                        3
+                    );
+                    for (uint j = 0; j < nodesToDownload.length; j++) {
+                        if (taskInfo.selectedNode != nodesToDownload[j]) {
+                            emit DownloadModel(nodesToDownload[j], modelID);
+                        }
+                    }
+                }
+            }
         } else if (status == TaskStatus.ParametersUploaded) {
             taskInfo.startTimestamp = block.timestamp;
             emit TaskParametersUploaded(

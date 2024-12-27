@@ -46,7 +46,7 @@ contract Node is Ownable {
         uint score;
         uint[3] version;
         bytes publicKey;
-        string lastModelID;
+        string[] lastModelIDs;
         string[] localModelIDs;
     }
 
@@ -123,6 +123,12 @@ contract Node is Ownable {
         address nodeAddress
     ) public view returns (NodeStatus) {
         return nodesMap[nodeAddress].status;
+    }
+
+    function nodeContainsModelID(address nodeAddress, string calldata modelID) public view returns (bool) {
+        require(allNodes.contains(nodeAddress), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        return _modelIDNodesIndex[modelIDHash].contains(nodeAddress);
     }
 
     function setNodeStatus(address nodeAddress, NodeStatus status) private {
@@ -253,9 +259,8 @@ contract Node is Ownable {
         uint gpuVram,
         uint[3] calldata version,
         bytes calldata publicKey,
-        string[] calldata localModelIDs
+        string[] calldata modelIDs
     ) public payable {
-        // TODO: add param localModelIDs in join method
         require(allNodes.length() < maxNodesAllowed, "Network is full");
         require(
             getNodeStatus(msg.sender) == NodeStatus.Quit,
@@ -290,7 +295,7 @@ contract Node is Ownable {
         nodesMap[msg.sender].score = score;
         nodesMap[msg.sender].version = version;
         nodesMap[msg.sender].publicKey = publicKey;
-        nodesMap[msg.sender].localModelIDs = localModelIDs;
+        nodesMap[msg.sender].localModelIDs = modelIDs;
 
         addNode(msg.sender);
         markNodeAvailable(msg.sender);
@@ -612,40 +617,52 @@ contract Node is Ownable {
     function selectNodesWithModelID(
         address[] memory nodes,
         uint[] memory scores,
-        string calldata modelID
+        string[] calldata modelIDs
     ) internal view returns (address[] memory, uint[] memory) {
         // filter nodes whos localModelIDs contains modelID
         // if all nodes localModelIDs don't contain modelID, return all the nodes
-        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
-        if (!_modelIDSet.contains(modelIDHash)) {
-            return (nodes, scores);
-        }
 
         uint count = 0;
-        address[] memory resultNodes = new address[](nodes.length);
-        uint[] memory resultScores = new uint[](nodes.length);
+        bool[] memory isSelected = new bool[](nodes.length);
+        uint[] memory changedScores = new uint[](nodes.length);
 
-        for (uint i = 0; i < nodes.length; i++) {
-            address nodeAddress = nodes[i];
-            bool contains = _modelIDNodesIndex[modelIDHash].contains(
-                nodeAddress
-            );
-            if (contains) {
-                resultNodes[count] = nodeAddress;
-                resultScores[count] = scores[i];
-                count++;
+        for (uint i = 0; i < modelIDs.length; i++) {
+            bytes32 modelIDHash = keccak256(abi.encodePacked(modelIDs[i]));
+            if (!_modelIDSet.contains(modelIDHash)) {
+                continue;
             }
+
+            for (uint j = 0; j < nodes.length; j++) {
+                address nodeAddress = nodes[j];
+                bool contains = _modelIDNodesIndex[modelIDHash].contains(
+                    nodeAddress
+                );
+                if (contains) {
+                    if (isSelected[j]) {
+                        changedScores[j] += scores[j];
+                    } else {
+                        isSelected[j] = true;
+                        changedScores[j] = scores[j];
+                        count++;
+                    }
+                }
+            }
+
         }
 
         if (count == 0) {
             return (nodes, scores);
         }
 
-        // resize array by assembly
-        uint subSize = nodes.length - count;
-        assembly {
-            mstore(resultNodes, sub(mload(resultNodes), subSize))
-            mstore(resultScores, sub(mload(resultScores), subSize))
+        address[] memory resultNodes = new address[](count);
+        uint[] memory resultScores = new uint[](count);
+        uint n = 0;
+        for (uint i = 0; i < nodes.length; i++) {
+            if (isSelected[i]) {
+                resultNodes[n] = nodes[i];
+                resultScores[n] = changedScores[i];
+                n++;
+            }
         }
 
         return (resultNodes, resultScores);
@@ -691,17 +708,17 @@ contract Node is Ownable {
         return (resultNodes, resultScores);
     }
 
-    function addScoreByModelID(
+    function addScoreByModelIDs(
         address[] memory nodes,
         uint[] memory scores,
-        string calldata modelID
+        string[] calldata modelIDs
     ) internal view returns (address[] memory, uint[] memory) {
         // add extra score to nodes with the same last model ID as the current model ID
         for (uint i = 0; i < nodes.length; i++) {
             address nodeAddress = nodes[i];
-            string memory lastModelID = nodesMap[nodeAddress].lastModelID;
-            if (keccak256(bytes(lastModelID)) == keccak256(bytes(modelID))) {
-                scores[i] += qos.getTaskScoreLimit();
+            string[] memory lastModelIDs = nodesMap[nodeAddress].lastModelIDs;
+            if (keccak256(abi.encode(lastModelIDs)) == keccak256(abi.encode(modelIDs))) {
+                scores[i] *= 2;
             }
         }
         return (nodes, scores);
@@ -713,7 +730,7 @@ contract Node is Ownable {
         string calldata requiredGPU,
         uint requiredGPUVRAM,
         uint[3] calldata taskVersion,
-        string calldata modelID
+        string[] calldata modelIDs
     ) external returns (address) {
         random.manualSeed(seed);
         if (bytes(requiredGPU).length > 0) {
@@ -729,9 +746,9 @@ contract Node is Ownable {
                 (nodes, scores) = selectNodesWithModelID(
                     nodes,
                     scores,
-                    modelID
+                    modelIDs
                 );
-                addScoreByModelID(nodes, scores, modelID);
+                addScoreByModelIDs(nodes, scores, modelIDs);
                 uint index = random.choice(scores);
                 return nodes[index];
             } else {
@@ -742,14 +759,14 @@ contract Node is Ownable {
                 address[] memory nodes,
                 uint[] memory scores
             ) = filterAvailableNodesByVram(minimumVRAM, taskVersion);
-            (nodes, scores) = selectNodesWithModelID(nodes, scores, modelID);
-            addScoreByModelID(nodes, scores, modelID);
+            (nodes, scores) = selectNodesWithModelID(nodes, scores, modelIDs);
+            addScoreByModelIDs(nodes, scores, modelIDs);
             uint index = random.choice(scores);
             return nodes[index];
         }
     }
 
-    function randomSelectNodes(
+    function randomSelectNodesWithoutModelID(
         bytes32 seed,
         uint minimumVRAM,
         string calldata requiredGPU,

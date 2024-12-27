@@ -58,7 +58,7 @@ contract TaskQueue is Ownable {
         bytes32 taskIDCommitment,
         uint taskFee,
         uint taskSize,
-        string calldata modelID,
+        string[] calldata modelIDs,
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
@@ -71,7 +71,7 @@ contract TaskQueue is Ownable {
             taskIDCommitment,
             taskFee,
             taskSize,
-            modelID,
+            modelIDs,
             minimumVRAM,
             requiredGPU,
             requiredGPUVRAM,
@@ -91,7 +91,7 @@ contract TaskQueue is Ownable {
         }
     }
 
-    function popTask(string calldata gpuName, uint gpuVRAM, uint[3] calldata version, string calldata lastModelID) public returns (bytes32) {
+    function popTask(string calldata gpuName, uint gpuVRAM, uint[3] calldata version, string[] calldata lastModelIDs) public returns (bytes32) {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskIDCommitments.length() > 0, "No available task");
 
@@ -110,7 +110,7 @@ contract TaskQueue is Ownable {
                     if (uint(secondTaskIDCommitment) == 0) {
                         secondTaskIDCommitment = tasks[i].taskIDCommitment;
                     }
-                    if (keccak256(bytes(lastModelID)) == keccak256(bytes(tasks[i].modelID))) {
+                    if (keccak256(abi.encode(lastModelIDs)) == keccak256(abi.encode(tasks[i].modelIDs))) {
                         taskIDCommitment = tasks[i].taskIDCommitment;
                         break;
                     }
@@ -137,7 +137,7 @@ contract TaskQueue is Ownable {
                                 if (uint(secondTaskIDCommitment) == 0) {
                                     secondTaskIDCommitment = tasks[j].taskIDCommitment;
                                 }
-                                if (keccak256(bytes(lastModelID)) == keccak256(bytes(tasks[j].modelID))) {
+                                if (keccak256(abi.encode(lastModelIDs)) == keccak256(abi.encode(tasks[i].modelIDs))) {
                                     taskIDCommitment = tasks[j].taskIDCommitment;
                                     break;
                                 }
