@@ -53,7 +53,8 @@ contract VSSTask is Ownable {
 
     event DownloadModel(
         address nodeAddress,
-        string modelID
+        string modelID,
+        TaskType taskType
     );
 
     /* Task type */
@@ -664,7 +665,7 @@ contract VSSTask is Ownable {
             for (uint i = 0; i < taskInfo.modelIDs.length; i++) {
                 string memory modelID = taskInfo.modelIDs[i];
                 if (!node.nodeContainsModelID(taskInfo.selectedNode, modelID)) {
-                    emit DownloadModel(taskInfo.selectedNode, modelID);
+                    emit DownloadModel(taskInfo.selectedNode, modelID, taskInfo.taskType);
                     bytes32 seed = keccak256(
                         abi.encode(
                             block.number - 1,
@@ -683,7 +684,7 @@ contract VSSTask is Ownable {
                     );
                     for (uint j = 0; j < nodesToDownload.length; j++) {
                         if (taskInfo.selectedNode != nodesToDownload[j]) {
-                            emit DownloadModel(nodesToDownload[j], modelID);
+                            emit DownloadModel(nodesToDownload[j], modelID, taskInfo.taskType);
                         }
                     }
                 }
