@@ -50,7 +50,7 @@ contract Random {
     }
 
     function choice(uint[] memory weights) public returns (uint) {
-        require(weights.length > 0);
+        require(weights.length > 0, "Weights length is 0");
         uint[] memory normWeights = new uint[](weights.length);
         for (uint i = 0; i < weights.length; i++) {
             // 18 fixed point number, (0, 1e18) => (0, 1)
@@ -71,7 +71,7 @@ contract Random {
     }
 
     function choices(uint[] memory weights, uint k) public returns (uint[] memory) {
-        require(weights.length >= k);
+        require(weights.length >= k, "Weights length is less than k");
 
         if (k == weights.length) {
             return weights;
