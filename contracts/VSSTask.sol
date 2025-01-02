@@ -183,6 +183,7 @@ contract VSSTask is Ownable {
                 nodeInfo.gpu.name,
                 nodeInfo.gpu.vram,
                 nodeInfo.version,
+                nodeInfo.localModelIDs,
                 nodeInfo.lastModelIDs
             )
         returns (bytes32 taskIDCommitment) {
