@@ -73,10 +73,6 @@ contract Random {
     function choices(uint[] memory weights, uint k) public returns (uint[] memory) {
         require(weights.length >= k, "Weights length is less than k");
 
-        if (k == weights.length) {
-            return weights;
-        }
-
         uint[] memory results = new uint[](k);
         uint[] memory normWeights = new uint[](weights.length);
         for (uint i = 0; i < weights.length; i++) {

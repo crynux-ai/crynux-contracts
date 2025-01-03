@@ -83,8 +83,13 @@ describe("Random", () => {
     it("testChoices", async () => {
         const seed = ethers.randomBytes(32);
         await v.manualSeed(seed);
-        await v.choices([1,2,3,4,10,20,30,40], 4);
-        const indices = await choices(v, [1,2,3,4,10,20,30,40], 4);
+        let indices = await choices(v, [1,2,3], 3);
+        assert.lengthOf(indices, 3);
+        for (const i of indices) {
+            assert.isAtLeast(i, 0);
+            assert.isBelow(i, 3);
+        }
+        indices = await choices(v, [1,2,3,4,10,20,30,40], 4);
         assert.lengthOf(indices, 4);
         for (const i of indices) {
             assert.isAtLeast(i, 0);
