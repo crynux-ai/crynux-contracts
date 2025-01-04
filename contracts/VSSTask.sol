@@ -458,6 +458,8 @@ contract VSSTask is Ownable {
         if (groupValidatedIndex < 3) {
             bytes32 taskIDCommitment = finishedTasks[groupValidatedIndex]
                 .taskIDCommitment;
+            uint totalFee = tasks[taskIDCommitment].taskFee;
+            uint totalQOS = 0;
             for (uint i = 0; i < finishedTaskCount; i++) {
                 if (
                     finishedTaskStatus[i] == TaskStatus.GroupValidated ||
@@ -465,11 +467,17 @@ contract VSSTask is Ownable {
                 ) {
                     address nodeAddress = finishedTasks[i].selectedNode;
                     tasks[taskIDCommitment].paymentAddresses.push(nodeAddress);
-                    uint fee = (tasks[taskIDCommitment].taskFee *
-                        qos.getCurrentTaskScore(nodeAddress)) /
-                        qos.getTaskScoreLimit();
-                    tasks[taskIDCommitment].payments.push(fee);
+                    totalQOS += qos.getCurrentTaskScore(nodeAddress);
                 }
+            }
+            for (uint i = 0; i < tasks[taskIDCommitment].paymentAddresses.length; i++) {
+                address nodeAddress = tasks[taskIDCommitment].paymentAddresses[i];
+                uint fee = (tasks[taskIDCommitment].taskFee * qos.getCurrentTaskScore(nodeAddress)) / totalQOS;
+                if (totalFee - fee < 3) {
+                    fee = totalFee;
+                }
+                totalFee -= fee;
+                tasks[taskIDCommitment].payments.push(fee);
             }
         }
 
