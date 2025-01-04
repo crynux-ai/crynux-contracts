@@ -561,7 +561,11 @@ contract VSSTask is Ownable {
             TaskStateTransition.ReportTaskResultUploaded
         );
 
-        changeTaskState(taskIDCommitment, TaskStatus.EndSuccess);
+        if (tasks[taskIDCommitment].status == TaskStatus.Validated) {
+            changeTaskState(taskIDCommitment, TaskStatus.EndSuccess);
+        } else {
+            changeTaskState(taskIDCommitment, TaskStatus.EndGroupSuccess);
+        }
     }
 
     /* State Transition */
