@@ -80,6 +80,8 @@ contract Node is Ownable {
     EnumerableSet.Bytes32Set private _modelIDSet;
     // store all nodes indexed by their local model ids
     mapping(bytes32 => EnumerableSet.AddressSet) private _modelIDNodesIndex;
+    // store available nodes indexed by their local model ids
+    mapping(bytes32 => EnumerableSet.AddressSet) private _modelIDAvailableNodesIndex;
 
     address private taskContractAddress;
 
@@ -134,6 +136,11 @@ contract Node is Ownable {
         return _modelIDNodesIndex[modelIDHash].contains(nodeAddress);
     }
 
+    function modelAvailableNodesCount(string calldata modelID) public view returns (uint) {
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        return _modelIDAvailableNodesIndex[modelIDHash].length();
+    }
+
     function setNodeStatus(address nodeAddress, NodeStatus status) private {
         nodesMap[nodeAddress].status = status;
     }
@@ -149,6 +156,12 @@ contract Node is Ownable {
         // index node by gpu ID
         _availableGPUIDSet.add(gpuID);
         _availableGPUIDNodesIndex[gpuID].add(nodeAddress);
+
+        // index node by it's models ids
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            bytes32 modelIDHash = keccak256(abi.encodePacked(nodesMap[nodeAddress].localModelIDs[i]));
+            _modelIDAvailableNodesIndex[modelIDHash].add(nodeAddress);
+        }
 
         // add node to available nodes set
         _availableNodes.add(nodeAddress);
@@ -172,6 +185,11 @@ contract Node is Ownable {
         }
         if (_availableGPUVramNodesIndex[vram].length() == 0) {
             _availableGPUVramSet.remove(vram);
+        }
+        // remove node from model id index
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            bytes32 modelIDHash = keccak256(abi.encodePacked(nodesMap[nodeAddress].localModelIDs[i]));
+            _modelIDAvailableNodesIndex[modelIDHash].remove(nodeAddress);
         }
 
         // remove node from available nodes set
@@ -238,6 +256,9 @@ contract Node is Ownable {
         bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
         _modelIDSet.add(modelIDHash);
         _modelIDNodesIndex[modelIDHash].add(nodeAddress);
+        if (nodesMap[nodeAddress].status == NodeStatus.Available) {
+            _modelIDAvailableNodesIndex[modelIDHash].add(nodeAddress);
+        }
     }
 
     function removeLocalModelIndex(
@@ -246,6 +267,9 @@ contract Node is Ownable {
     ) internal {
         require(allNodes.contains(nodeAddress), "Node has quitted");
         bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        if (_modelIDAvailableNodesIndex[modelIDHash].contains(nodeAddress)) {
+            _modelIDAvailableNodesIndex[modelIDHash].remove(nodeAddress);
+        }
         _modelIDNodesIndex[modelIDHash].remove(nodeAddress);
         if (_modelIDNodesIndex[modelIDHash].length() == 0) {
             _modelIDSet.remove(modelIDHash);

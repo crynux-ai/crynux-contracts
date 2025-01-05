@@ -677,8 +677,13 @@ contract VSSTask is Ownable {
 
             for (uint i = 0; i < taskInfo.modelIDs.length; i++) {
                 string memory modelID = taskInfo.modelIDs[i];
+                bool downloaded = false;
                 if (!node.nodeContainsModelID(taskInfo.selectedNode, modelID)) {
                     emit DownloadModel(taskInfo.selectedNode, modelID, taskInfo.taskType);
+                    downloaded = true;
+                }
+                uint count = node.modelAvailableNodesCount(modelID);
+                if (count < 3) {
                     bytes32 seed = keccak256(
                         abi.encode(
                             block.number - 1,
@@ -693,10 +698,10 @@ contract VSSTask is Ownable {
                         taskInfo.requiredGPUVRAM,
                         taskInfo.taskVersion,
                         modelID,
-                        3
+                        10 - count
                     );
                     for (uint j = 0; j < nodesToDownload.length; j++) {
-                        if (taskInfo.selectedNode != nodesToDownload[j]) {
+                        if (!downloaded || taskInfo.selectedNode != nodesToDownload[j]) {
                             emit DownloadModel(nodesToDownload[j], modelID, taskInfo.taskType);
                         }
                     }
