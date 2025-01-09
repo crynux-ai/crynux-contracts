@@ -230,7 +230,7 @@ contract VSSTask is Ownable {
         taskInfo.creator = msg.sender;
         taskInfo.taskIDCommitment = taskIDCommitment;
         taskInfo.nonce = nonce;
-        taskInfo.timeout = block.timestamp + timeout;
+        taskInfo.timeout = timeout;
         taskInfo.taskFee = taskFee;
         taskInfo.modelIDs = modelIDs;
         taskInfo.minimumVRAM = minimumVRAM;
@@ -637,7 +637,9 @@ contract VSSTask is Ownable {
                 "Invalid caller"
             );
 
-            require(block.timestamp > taskInfo.timeout, "Timeout not reached");
+            if (taskInfo.startTimestamp > 0) {
+                require(block.timestamp > taskInfo.timeout + taskInfo.startTimestamp, "Timeout not reached");
+            }
         }
     }
 
@@ -670,6 +672,7 @@ contract VSSTask is Ownable {
                 changeTaskState(rmTaskIDCommitment, TaskStatus.EndAborted);
             }
         } else if (status == TaskStatus.Started) {
+            taskInfo.startTimestamp = block.timestamp;
             nodeTasks[taskInfo.selectedNode] = taskIDCommitment;
             node.startTask(taskInfo.selectedNode);
             networkStats.taskStarted();
@@ -708,7 +711,6 @@ contract VSSTask is Ownable {
                 }
             }
         } else if (status == TaskStatus.ParametersUploaded) {
-            taskInfo.startTimestamp = block.timestamp;
             emit TaskParametersUploaded(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode
@@ -742,6 +744,9 @@ contract VSSTask is Ownable {
             networkStats.taskFinished();
             emit TaskEndSuccess(taskInfo.taskIDCommitment);
         } else if (status == TaskStatus.EndAborted) {
+            if (lastStatus == TaskStatus.EndAborted) {
+                return;
+            }
             if (lastStatus == TaskStatus.Queued) {
                 // remove task from task queue
                 taskQueue.removeTask(taskIDCommitment);
@@ -754,6 +759,11 @@ contract VSSTask is Ownable {
                 (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
                     ""
                 );
+                // add task score to selected node when it completes task execution
+                // to avoid kick it out
+                if (lastStatus != TaskStatus.ParametersUploaded) {
+                    qos.addTaskScore(taskInfo.selectedNode, 0);
+                }
                 require(success, "Token transfer failed");
                 node.finishTask(taskInfo.selectedNode);
                 delete nodeTasks[taskInfo.selectedNode];

@@ -83,13 +83,13 @@ contract TaskQueue is Ownable {
         );
 
         taskIDCommitments.add(taskIDCommitment);
-        taskVrams[taskIDCommitment] = minimumVRAM;
         if (bytes(requiredGPU).length > 0) {
             bytes32 gpuID = keccak256(abi.encodePacked(requiredGPU, requiredGPUVRAM));
             taskGPUIDs[taskIDCommitment] = gpuID;
             gpuIDs.add(gpuID);
             gpuIDTaskArray[gpuID].add(task);
         } else {
+            taskVrams[taskIDCommitment] = minimumVRAM;
             vrams.add(minimumVRAM);
             vramTaskArray[minimumVRAM].add(task);
         }
@@ -100,7 +100,7 @@ contract TaskQueue is Ownable {
         require(taskIDCommitments.length() > 0, "No available task");
 
         bytes32 taskIDCommitment;
-        uint maxPrice;
+        uint maxPrice = 0;
         
         for (uint i = 0; i < localModelIDs.length; i++) {
             nodeLocalModelIDs.add(keccak256(abi.encodePacked(localModelIDs[i])));
@@ -179,6 +179,7 @@ contract TaskQueue is Ownable {
         for (uint i = 0; i < localModelIDs.length; i++) {
             nodeLocalModelIDs.remove(keccak256(abi.encodePacked(localModelIDs[i])));
         }
+        require(maxPrice > 0, "No available task");
         _removeTask(taskIDCommitment);
         return taskIDCommitment;
     }
@@ -199,8 +200,8 @@ contract TaskQueue is Ownable {
                 delete vramTaskArray[vram];
                 vrams.remove(vram);
             }
+            delete taskVrams[taskIDCommitment];
         }
-        delete taskVrams[taskIDCommitment];
         taskIDCommitments.remove(taskIDCommitment);
     }
 
