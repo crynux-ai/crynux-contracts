@@ -51,6 +51,12 @@ contract VSSTask is Ownable {
         TaskAbortReason abortReason
     );
 
+    event DownloadModel(
+        address nodeAddress,
+        string modelID,
+        TaskType taskType
+    );
+
     /* Task type */
     enum TaskType {
         SD,
@@ -110,11 +116,11 @@ contract VSSTask is Ownable {
         bytes score;
         uint taskFee;
         uint taskSize;
-        string modelID;
+        string[] modelIDs;
         uint minimumVRAM;
         string requiredGPU;
         uint requiredGPUVRAM;
-        string taskVersion;
+        uint[3] taskVersion;
         TaskAbortReason abortReason;
         TaskError error;
         // record payment infomation in group validate
@@ -177,10 +183,12 @@ contract VSSTask is Ownable {
                 nodeInfo.gpu.name,
                 nodeInfo.gpu.vram,
                 nodeInfo.version,
-                nodeInfo.lastModelID
+                nodeInfo.localModelIDs,
+                nodeInfo.lastModelIDs
             )
         returns (bytes32 taskIDCommitment) {
             networkStats.taskDequeue();
+            tasks[taskIDCommitment].selectedNode = root;
             changeTaskState(taskIDCommitment, TaskStatus.Started);
         } catch Error(string memory reason) {
             string memory target = "No available task";
@@ -196,11 +204,11 @@ contract VSSTask is Ownable {
         TaskType taskType,
         bytes32 taskIDCommitment,
         bytes32 nonce,
-        string calldata modelID,
+        string[] calldata modelIDs,
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
-        string calldata taskVersion,
+        uint[3] calldata taskVersion,
         uint taskSize
     ) public payable {
         if (taskType == TaskType.LLM || taskType == TaskType.SD_FT) {
@@ -222,9 +230,9 @@ contract VSSTask is Ownable {
         taskInfo.creator = msg.sender;
         taskInfo.taskIDCommitment = taskIDCommitment;
         taskInfo.nonce = nonce;
-        taskInfo.timeout = block.timestamp + timeout;
+        taskInfo.timeout = timeout;
         taskInfo.taskFee = taskFee;
-        taskInfo.modelID = modelID;
+        taskInfo.modelIDs = modelIDs;
         taskInfo.minimumVRAM = minimumVRAM;
         taskInfo.requiredGPU = requiredGPU;
         taskInfo.requiredGPUVRAM = requiredGPUVRAM;
@@ -242,21 +250,21 @@ contract VSSTask is Ownable {
         networkStats.taskCreated();
 
         bytes32 seed = keccak256(
-            abi.encodePacked(
-                blockhash(block.number - 1),
+            abi.encode(
+                block.number - 1,
                 taskIDCommitment,
-                bytes(modelID)
+                modelIDs
             )
         );
 
         try
-            node.randomSelectNode(
+            node.randomSelectAvailableNode(
                 seed,
                 minimumVRAM,
                 requiredGPU,
                 requiredGPUVRAM,
                 taskVersion,
-                modelID
+                modelIDs
             )
         returns (address nodeAddress) {
             tasks[taskIDCommitment].selectedNode = nodeAddress;
@@ -291,6 +299,8 @@ contract VSSTask is Ownable {
             taskInfo.samplingSeed,
             false
         );
+
+        qos.addTaskScore(taskInfo.selectedNode, 0);
 
         if (taskInfo.status == TaskStatus.ErrorReported) {
             taskInfo.abortReason = TaskAbortReason.IncorrectResult;
@@ -448,6 +458,8 @@ contract VSSTask is Ownable {
         if (groupValidatedIndex < 3) {
             bytes32 taskIDCommitment = finishedTasks[groupValidatedIndex]
                 .taskIDCommitment;
+            uint totalFee = tasks[taskIDCommitment].taskFee;
+            uint totalQOS = 0;
             for (uint i = 0; i < finishedTaskCount; i++) {
                 if (
                     finishedTaskStatus[i] == TaskStatus.GroupValidated ||
@@ -455,11 +467,17 @@ contract VSSTask is Ownable {
                 ) {
                     address nodeAddress = finishedTasks[i].selectedNode;
                     tasks[taskIDCommitment].paymentAddresses.push(nodeAddress);
-                    uint fee = (tasks[taskIDCommitment].taskFee *
-                        qos.getCurrentTaskScore(nodeAddress)) /
-                        qos.getTaskScoreLimit();
-                    tasks[taskIDCommitment].payments.push(fee);
+                    totalQOS += qos.getCurrentTaskScore(nodeAddress);
                 }
+            }
+            for (uint i = 0; i < tasks[taskIDCommitment].paymentAddresses.length; i++) {
+                address nodeAddress = tasks[taskIDCommitment].paymentAddresses[i];
+                uint fee = (tasks[taskIDCommitment].taskFee * qos.getCurrentTaskScore(nodeAddress)) / totalQOS;
+                if (totalFee - fee < 3) {
+                    fee = totalFee;
+                }
+                totalFee -= fee;
+                tasks[taskIDCommitment].payments.push(fee);
             }
         }
 
@@ -551,7 +569,11 @@ contract VSSTask is Ownable {
             TaskStateTransition.ReportTaskResultUploaded
         );
 
-        changeTaskState(taskIDCommitment, TaskStatus.EndSuccess);
+        if (tasks[taskIDCommitment].status == TaskStatus.Validated) {
+            changeTaskState(taskIDCommitment, TaskStatus.EndSuccess);
+        } else {
+            changeTaskState(taskIDCommitment, TaskStatus.EndGroupSuccess);
+        }
     }
 
     /* State Transition */
@@ -615,7 +637,9 @@ contract VSSTask is Ownable {
                 "Invalid caller"
             );
 
-            require(block.timestamp > taskInfo.timeout, "Timeout not reached");
+            if (taskInfo.startTimestamp > 0) {
+                require(block.timestamp > taskInfo.timeout + taskInfo.startTimestamp, "Timeout not reached");
+            }
         }
     }
 
@@ -632,7 +656,7 @@ contract VSSTask is Ownable {
                 taskIDCommitment,
                 taskInfo.taskFee,
                 taskInfo.taskSize,
-                taskInfo.modelID,
+                taskInfo.modelIDs,
                 taskInfo.minimumVRAM,
                 taskInfo.requiredGPU,
                 taskInfo.requiredGPUVRAM,
@@ -648,11 +672,45 @@ contract VSSTask is Ownable {
                 changeTaskState(rmTaskIDCommitment, TaskStatus.EndAborted);
             }
         } else if (status == TaskStatus.Started) {
+            taskInfo.startTimestamp = block.timestamp;
             nodeTasks[taskInfo.selectedNode] = taskIDCommitment;
+            node.startTask(taskInfo.selectedNode);
             networkStats.taskStarted();
             emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
+
+            for (uint i = 0; i < taskInfo.modelIDs.length; i++) {
+                string memory modelID = taskInfo.modelIDs[i];
+                bool downloaded = false;
+                if (!node.nodeContainsModelID(taskInfo.selectedNode, modelID)) {
+                    emit DownloadModel(taskInfo.selectedNode, modelID, taskInfo.taskType);
+                    downloaded = true;
+                }
+                uint count = node.modelAvailableNodesCount(modelID);
+                if (count < 3) {
+                    bytes32 seed = keccak256(
+                        abi.encode(
+                            block.number - 1,
+                            taskIDCommitment,
+                            modelID
+                        )
+                    );
+                    address[] memory nodesToDownload = node.randomSelectNodesWithoutModelID(
+                        seed,
+                        taskInfo.minimumVRAM,
+                        taskInfo.requiredGPU,
+                        taskInfo.requiredGPUVRAM,
+                        taskInfo.taskVersion,
+                        modelID,
+                        10 - count
+                    );
+                    for (uint j = 0; j < nodesToDownload.length; j++) {
+                        if (!downloaded || taskInfo.selectedNode != nodesToDownload[j]) {
+                            emit DownloadModel(nodesToDownload[j], modelID, taskInfo.taskType);
+                        }
+                    }
+                }
+            }
         } else if (status == TaskStatus.ParametersUploaded) {
-            taskInfo.startTimestamp = block.timestamp;
             emit TaskParametersUploaded(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode
@@ -686,6 +744,9 @@ contract VSSTask is Ownable {
             networkStats.taskFinished();
             emit TaskEndSuccess(taskInfo.taskIDCommitment);
         } else if (status == TaskStatus.EndAborted) {
+            if (lastStatus == TaskStatus.EndAborted) {
+                return;
+            }
             if (lastStatus == TaskStatus.Queued) {
                 // remove task from task queue
                 taskQueue.removeTask(taskIDCommitment);
@@ -694,13 +755,20 @@ contract VSSTask is Ownable {
             if (taskInfo.scoreReadyTimestamp == 0) {
                 taskInfo.scoreReadyTimestamp = block.timestamp;
             }
-            (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
-                ""
-            );
-            require(success, "Token transfer failed");
-            node.finishTask(taskInfo.selectedNode);
-            delete nodeTasks[taskInfo.selectedNode];
-            networkStats.taskFinished();
+            if (taskInfo.selectedNode != address(0)) {
+                (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
+                    ""
+                );
+                // add task score to selected node when it completes task execution
+                // to avoid kick it out
+                if (lastStatus != TaskStatus.ParametersUploaded) {
+                    qos.addTaskScore(taskInfo.selectedNode, 0);
+                }
+                require(success, "Token transfer failed");
+                node.finishTask(taskInfo.selectedNode);
+                delete nodeTasks[taskInfo.selectedNode];
+                networkStats.taskFinished();
+            }
             emit TaskEndAborted(
                 taskInfo.taskIDCommitment,
                 msg.sender,

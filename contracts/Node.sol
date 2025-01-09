@@ -4,8 +4,9 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./QOS.sol";
-import "./libs/Random.sol";
+import "./Random.sol";
 import "./NetworkStats.sol";
+import "./libs/Version.sol";
 
 abstract contract TaskWithCallback {
     function nodeAvailableCallback(address root) external virtual;
@@ -15,7 +16,6 @@ contract Node is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
-    using Random for Random.Generator;
 
     uint256 private maxNodesAllowed = 100000;
     uint256 private requiredStakeAmount = 400 * 10 ** 18;
@@ -32,6 +32,7 @@ contract Node is Ownable {
 
     QOS private qos;
     NetworkStats private netStats;
+    Random private random;
 
     struct GPUInfo {
         string name;
@@ -43,9 +44,10 @@ contract Node is Ownable {
         bytes32 gpuID;
         GPUInfo gpu;
         uint score;
-        string version;
+        uint[3] version;
         bytes publicKey;
-        string lastModelID;
+        string[] lastModelIDs;
+        string[] localModelIDs;
     }
 
     event NodeSlashed(address nodeAddress);
@@ -57,15 +59,29 @@ contract Node is Ownable {
     // store all nodes info
     EnumerableSet.AddressSet private allNodes;
     mapping(address => NodeInfo) private nodesMap;
+    // store all nodes indexed by gpu vram
+    EnumerableSet.UintSet private _allGPUVramSet;
+    mapping(uint => EnumerableSet.AddressSet) _allGPUVramNodesIndex;
+    // store all nodes indexed by gpu type
+    EnumerableSet.Bytes32Set private _allGPUIDSet;
+    mapping(bytes32 => EnumerableSet.AddressSet) private _allGPUIDNodesIndex;
 
     // store all available nodes;
     EnumerableSet.AddressSet private _availableNodes;
     // store available nodes indexed by gpu vram
     EnumerableSet.UintSet private _availableGPUVramSet;
-    mapping(uint => EnumerableSet.AddressSet) _gpuVramNodesIndex;
+    mapping(uint => EnumerableSet.AddressSet) _availableGPUVramNodesIndex;
     // store available nodes indexed by gpu type (gpuID)
     EnumerableSet.Bytes32Set private _availableGPUIDSet;
-    mapping(bytes32 => EnumerableSet.AddressSet) private _gpuIDNodesIndex;
+    mapping(bytes32 => EnumerableSet.AddressSet)
+        private _availableGPUIDNodesIndex;
+
+    // store all local models ids
+    EnumerableSet.Bytes32Set private _modelIDSet;
+    // store all nodes indexed by their local model ids
+    mapping(bytes32 => EnumerableSet.AddressSet) private _modelIDNodesIndex;
+    // store available nodes indexed by their local model ids
+    mapping(bytes32 => EnumerableSet.AddressSet) private _modelIDAvailableNodesIndex;
 
     address private taskContractAddress;
 
@@ -77,6 +93,7 @@ contract Node is Ownable {
     ) Ownable(msg.sender) {
         qos = qosInstance;
         netStats = netStatsInstance;
+        random = new Random();
     }
 
     function getNodeInfo(
@@ -94,7 +111,7 @@ contract Node is Ownable {
         GPUInfo[] memory res = new GPUInfo[](length);
         for (uint i = 0; i < length; i++) {
             bytes32 gpuID = _availableGPUIDSet.at(i);
-            address nodeAddress = _gpuIDNodesIndex[gpuID].at(0);
+            address nodeAddress = _availableGPUIDNodesIndex[gpuID].at(0);
             res[i] = nodesMap[nodeAddress].gpu;
         }
         return res;
@@ -104,8 +121,24 @@ contract Node is Ownable {
         return _availableNodes.values();
     }
 
-    function getNodeStatus(address nodeAddress) public view returns (NodeStatus) {
+    function getNodeStatus(
+        address nodeAddress
+    ) public view returns (NodeStatus) {
         return nodesMap[nodeAddress].status;
+    }
+
+    function nodeContainsModelID(
+        address nodeAddress,
+        string calldata modelID
+    ) public view returns (bool) {
+        require(allNodes.contains(nodeAddress), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        return _modelIDNodesIndex[modelIDHash].contains(nodeAddress);
+    }
+
+    function modelAvailableNodesCount(string calldata modelID) public view returns (uint) {
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        return _modelIDAvailableNodesIndex[modelIDHash].length();
     }
 
     function setNodeStatus(address nodeAddress, NodeStatus status) private {
@@ -118,11 +151,17 @@ contract Node is Ownable {
 
         // index node by gpu memory
         _availableGPUVramSet.add(vram);
-        _gpuVramNodesIndex[vram].add(nodeAddress);
+        _availableGPUVramNodesIndex[vram].add(nodeAddress);
 
         // index node by gpu ID
         _availableGPUIDSet.add(gpuID);
-        _gpuIDNodesIndex[gpuID].add(nodeAddress);
+        _availableGPUIDNodesIndex[gpuID].add(nodeAddress);
+
+        // index node by it's models ids
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            bytes32 modelIDHash = keccak256(abi.encodePacked(nodesMap[nodeAddress].localModelIDs[i]));
+            _modelIDAvailableNodesIndex[modelIDHash].add(nodeAddress);
+        }
 
         // add node to available nodes set
         _availableNodes.add(nodeAddress);
@@ -139,13 +178,18 @@ contract Node is Ownable {
         bytes32 gpuID = nodesMap[nodeAddress].gpuID;
 
         // remove node from gpu id and vram index
-        _gpuIDNodesIndex[gpuID].remove(nodeAddress);
-        _gpuVramNodesIndex[vram].remove(nodeAddress);
-        if (_gpuIDNodesIndex[gpuID].length() == 0) {
+        _availableGPUIDNodesIndex[gpuID].remove(nodeAddress);
+        _availableGPUVramNodesIndex[vram].remove(nodeAddress);
+        if (_availableGPUIDNodesIndex[gpuID].length() == 0) {
             _availableGPUIDSet.remove(gpuID);
         }
-        if (_gpuVramNodesIndex[vram].length() == 0) {
+        if (_availableGPUVramNodesIndex[vram].length() == 0) {
             _availableGPUVramSet.remove(vram);
+        }
+        // remove node from model id index
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            bytes32 modelIDHash = keccak256(abi.encodePacked(nodesMap[nodeAddress].localModelIDs[i]));
+            _modelIDAvailableNodesIndex[modelIDHash].remove(nodeAddress);
         }
 
         // remove node from available nodes set
@@ -154,17 +198,101 @@ contract Node is Ownable {
         netStats.nodeUnavailable();
     }
 
+    function addNode(address nodeAddress) private {
+        string memory gpuName = nodesMap[nodeAddress].gpu.name;
+        uint vram = nodesMap[nodeAddress].gpu.vram;
+        bytes32 gpuID = nodesMap[nodeAddress].gpuID;
+
+        allNodes.add(nodeAddress);
+
+        // index node by gpu memory
+        _allGPUVramSet.add(vram);
+        _allGPUVramNodesIndex[vram].add(nodeAddress);
+        // index node by gpu ID
+        _allGPUIDSet.add(gpuID);
+        _allGPUIDNodesIndex[gpuID].add(nodeAddress);
+        // index node local model ids
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            addLocalModelIndex(
+                nodeAddress,
+                nodesMap[nodeAddress].localModelIDs[i]
+            );
+        }
+
+        netStats.nodeJoined(msg.sender, gpuName, vram);
+    }
+
     function removeNode(address nodeAddress) private {
-        delete nodesMap[nodeAddress];
+        uint vram = nodesMap[nodeAddress].gpu.vram;
+        bytes32 gpuID = nodesMap[nodeAddress].gpuID;
+
+        // remove node from gpu id and vram index
+        _allGPUIDNodesIndex[gpuID].remove(nodeAddress);
+        _allGPUVramNodesIndex[vram].remove(nodeAddress);
+        if (_allGPUIDNodesIndex[gpuID].length() == 0) {
+            _allGPUIDSet.remove(gpuID);
+        }
+        if (_allGPUVramNodesIndex[vram].length() == 0) {
+            _allGPUVramSet.remove(vram);
+        }
+        // remove node local model ids
+        for (uint i = 0; i < nodesMap[nodeAddress].localModelIDs.length; i++) {
+            removeLocalModelIndex(
+                nodeAddress,
+                nodesMap[nodeAddress].localModelIDs[i]
+            );
+        }
+
         allNodes.remove(nodeAddress);
+        delete nodesMap[nodeAddress];
         netStats.nodeQuit();
+    }
+
+    function addLocalModelIndex(
+        address nodeAddress,
+        string memory modelID
+    ) internal {
+        require(allNodes.contains(nodeAddress), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        _modelIDSet.add(modelIDHash);
+        _modelIDNodesIndex[modelIDHash].add(nodeAddress);
+        if (nodesMap[nodeAddress].status == NodeStatus.Available) {
+            _modelIDAvailableNodesIndex[modelIDHash].add(nodeAddress);
+        }
+    }
+
+    function removeLocalModelIndex(
+        address nodeAddress,
+        string memory modelID
+    ) internal {
+        require(allNodes.contains(nodeAddress), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        if (_modelIDAvailableNodesIndex[modelIDHash].contains(nodeAddress)) {
+            _modelIDAvailableNodesIndex[modelIDHash].remove(nodeAddress);
+        }
+        _modelIDNodesIndex[modelIDHash].remove(nodeAddress);
+        if (_modelIDNodesIndex[modelIDHash].length() == 0) {
+            _modelIDSet.remove(modelIDHash);
+            delete _modelIDNodesIndex[modelIDHash];
+        }
+    }
+
+    function reportModelDownloaded(string calldata modelID) public {
+        require(allNodes.contains(msg.sender), "Node has quitted");
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        if (!_modelIDNodesIndex[modelIDHash].contains(msg.sender)) {
+            _modelIDSet.add(modelIDHash);
+            _modelIDNodesIndex[modelIDHash].add(msg.sender);
+            nodesMap[msg.sender].localModelIDs.push(modelID);
+        }
     }
 
     function join(
         string calldata gpuName,
         uint gpuVram,
-        string calldata version,
-        bytes calldata publicKey
+        uint[3] calldata version,
+        bytes calldata publicKey,
+        string[] calldata modelIDs
     ) public payable {
         require(allNodes.length() < maxNodesAllowed, "Network is full");
         require(
@@ -174,9 +302,13 @@ contract Node is Ownable {
 
         require(publicKey.length == 64, "Invalid public key length");
 
-        uint derivedAddress = uint(keccak256(publicKey)) & 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+        uint derivedAddress = uint(keccak256(publicKey)) &
+            0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-        require(derivedAddress == uint(uint160(msg.sender)), "Public key mismatch");
+        require(
+            derivedAddress == uint(uint160(msg.sender)),
+            "Public key mismatch"
+        );
 
         // Check the staking
         uint token = msg.value;
@@ -190,24 +322,19 @@ contract Node is Ownable {
         if (score == 0) {
             score += 1;
         }
-        nodesMap[msg.sender] = NodeInfo(
-            NodeStatus.Available,
-            gpuID,
-            GPUInfo(gpuName, gpuVram),
-            score,
-            version,
-            publicKey,
-            ""
-        );
-        allNodes.add(msg.sender);
+        nodesMap[msg.sender].status = NodeStatus.Available;
+        nodesMap[msg.sender].gpuID = gpuID;
+        nodesMap[msg.sender].gpu = GPUInfo(gpuName, gpuVram);
+        nodesMap[msg.sender].score = score;
+        nodesMap[msg.sender].version = version;
+        nodesMap[msg.sender].publicKey = publicKey;
+        nodesMap[msg.sender].localModelIDs = modelIDs;
 
+        addNode(msg.sender);
         markNodeAvailable(msg.sender);
-        netStats.nodeJoined(msg.sender, gpuName, gpuVram);
     }
 
-    function updateVersion(
-        string calldata version
-    ) public {
+    function updateVersion(uint[3] calldata version) public {
         require(
             getNodeStatus(msg.sender) != NodeStatus.Quit,
             "Node has quitted"
@@ -360,30 +487,117 @@ contract Node is Ownable {
         taskContractAddress = taskContract;
     }
 
-    function filterNodesByGPUID(
+    function filterAvailableNodesByGPUID(
         bytes32 gpuID,
-        string calldata taskVersion
+        uint[3] calldata taskVersion
     ) private view returns (address[] memory, uint[] memory) {
-        uint length = _gpuIDNodesIndex[gpuID].length();
-        require(length > 0, "No available node");
+        uint length = _availableGPUIDNodesIndex[gpuID].length();
+        if (length == 0) {
+            return (new address[](0), new uint[](0));
+        }
 
         uint count = 0;
         address[] memory nodes = new address[](length);
         uint[] memory scores = new uint[](length);
 
         for (uint i = 0; i < length; i++) {
-            address nodeAddress = _gpuIDNodesIndex[gpuID].at(i);
-            string memory nodeVersion = nodesMap[nodeAddress].version;
-            if (
-                keccak256(bytes(nodeVersion)) == keccak256(bytes(taskVersion))
-            ) {
+            address nodeAddress = _availableGPUIDNodesIndex[gpuID].at(i);
+            uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
+            if (Version.matchVersion(nodeVersion, taskVersion)) {
                 uint score = nodesMap[nodeAddress].score;
                 nodes[count] = nodeAddress;
                 scores[count] = score;
                 count++;
             }
         }
-        require(count > 0, "No available node");
+        if (count == 0) {
+            return (new address[](0), new uint[](0));
+        }
+
+        // resize array by assembly
+        uint subSize = length - count;
+        assembly {
+            mstore(nodes, sub(mload(nodes), subSize))
+            mstore(scores, sub(mload(scores), subSize))
+        }
+
+        return (nodes, scores);
+    }
+
+    function filterNodesByGPUID(
+        bytes32 gpuID,
+        uint[3] calldata taskVersion
+    ) private view returns (address[] memory, uint[] memory) {
+        uint length = _allGPUIDNodesIndex[gpuID].length();
+        if (length == 0) {
+            return (new address[](0), new uint[](0));
+        }
+
+        uint count = 0;
+        address[] memory nodes = new address[](length);
+        uint[] memory scores = new uint[](length);
+
+        for (uint i = 0; i < length; i++) {
+            address nodeAddress = _allGPUIDNodesIndex[gpuID].at(i);
+            uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
+            if (Version.matchVersion(nodeVersion, taskVersion)) {
+                uint score = nodesMap[nodeAddress].score;
+                nodes[count] = nodeAddress;
+                scores[count] = score;
+                count++;
+            }
+        }
+        if (count == 0) {
+            return (new address[](0), new uint[](0));
+        }
+
+        // resize array by assembly
+        uint subSize = length - count;
+        assembly {
+            mstore(nodes, sub(mload(nodes), subSize))
+            mstore(scores, sub(mload(scores), subSize))
+        }
+
+        return (nodes, scores);
+    }
+
+    function filterAvailableNodesByVram(
+        uint minimumVRAM,
+        uint[3] calldata taskVersion
+    ) private view returns (address[] memory, uint[] memory) {
+        uint length = _availableNodes.length();
+        if (length == 0) {
+            return (new address[](0), new uint[](0));
+        }
+
+        uint count = 0;
+        address[] memory nodes = new address[](length);
+        uint[] memory scores = new uint[](length);
+
+        for (uint i = 0; i < _availableGPUVramSet.length(); i++) {
+            uint vram = _availableGPUVramSet.at(i);
+            if (vram >= minimumVRAM) {
+                for (
+                    uint j = 0;
+                    j < _availableGPUVramNodesIndex[vram].length();
+                    j++
+                ) {
+                    address nodeAddress = _availableGPUVramNodesIndex[vram].at(
+                        j
+                    );
+                    uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
+                    if (Version.matchVersion(nodeVersion, taskVersion)) {
+                        uint score = nodesMap[nodeAddress].score;
+                        nodes[count] = nodeAddress;
+                        scores[count] = score;
+                        count++;
+                    }
+                }
+            }
+        }
+        if (count == 0) {
+            return (new address[](0), new uint[](0));
+        }
 
         // resize array by assembly
         uint subSize = length - count;
@@ -397,25 +611,28 @@ contract Node is Ownable {
 
     function filterNodesByVram(
         uint minimumVRAM,
-        string calldata taskVersion
+        uint[3] calldata taskVersion
     ) private view returns (address[] memory, uint[] memory) {
-        uint length = _availableNodes.length();
-        require(length > 0, "No available node");
+        uint length = allNodes.length();
+        if (length == 0) {
+            return (new address[](0), new uint[](0));
+        }
 
         uint count = 0;
         address[] memory nodes = new address[](length);
         uint[] memory scores = new uint[](length);
 
-        for (uint i = 0; i < _availableGPUVramSet.length(); i++) {
-            uint vram = _availableGPUVramSet.at(i);
+        for (uint i = 0; i < _allGPUVramSet.length(); i++) {
+            uint vram = _allGPUVramSet.at(i);
             if (vram >= minimumVRAM) {
-                for (uint j = 0; j < _gpuVramNodesIndex[vram].length(); j++) {
-                    address nodeAddress = _gpuVramNodesIndex[vram].at(j);
-                    string memory nodeVersion = nodesMap[nodeAddress].version;
-                    if (
-                        keccak256(bytes(nodeVersion)) ==
-                        keccak256(bytes(taskVersion))
-                    ) {
+                for (
+                    uint j = 0;
+                    j < _allGPUVramNodesIndex[vram].length();
+                    j++
+                ) {
+                    address nodeAddress = _allGPUVramNodesIndex[vram].at(j);
+                    uint[3] memory nodeVersion = nodesMap[nodeAddress].version;
+                    if (Version.matchVersion(nodeVersion, taskVersion)) {
                         uint score = nodesMap[nodeAddress].score;
                         nodes[count] = nodeAddress;
                         scores[count] = score;
@@ -424,7 +641,9 @@ contract Node is Ownable {
                 }
             }
         }
-        require(count > 0, "No available node");
+        if (count == 0) {
+            return (new address[](0), new uint[](0));
+        }
 
         // resize array by assembly
         uint subSize = length - count;
@@ -436,56 +655,209 @@ contract Node is Ownable {
         return (nodes, scores);
     }
 
-    function addScoreByModelID(
+    function selectNodesWithModelID(
+        address[] memory nodes,
+        uint[] memory scores,
+        string[] calldata modelIDs
+    ) internal view returns (address[] memory, uint[] memory) {
+        // filter nodes whos localModelIDs contains modelID
+        // if all nodes localModelIDs don't contain modelID, return all the nodes
+
+        uint count = 0;
+        bool[] memory isSelected = new bool[](nodes.length);
+        uint[] memory changedScores = new uint[](nodes.length);
+
+        for (uint i = 0; i < modelIDs.length; i++) {
+            bytes32 modelIDHash = keccak256(abi.encodePacked(modelIDs[i]));
+            if (!_modelIDSet.contains(modelIDHash)) {
+                continue;
+            }
+
+            for (uint j = 0; j < nodes.length; j++) {
+                address nodeAddress = nodes[j];
+                bool contains = _modelIDNodesIndex[modelIDHash].contains(
+                    nodeAddress
+                );
+                if (contains) {
+                    if (isSelected[j]) {
+                        changedScores[j] += scores[j];
+                    } else {
+                        isSelected[j] = true;
+                        changedScores[j] = scores[j];
+                        count++;
+                    }
+                }
+            }
+        }
+
+        if (count == 0) {
+            return (nodes, scores);
+        }
+
+        address[] memory resultNodes = new address[](count);
+        uint[] memory resultScores = new uint[](count);
+        uint n = 0;
+        for (uint i = 0; i < nodes.length; i++) {
+            if (isSelected[i]) {
+                resultNodes[n] = nodes[i];
+                resultScores[n] = changedScores[i];
+                n++;
+            }
+        }
+
+        return (resultNodes, resultScores);
+    }
+
+    function selectNodesWithoutModelID(
         address[] memory nodes,
         uint[] memory scores,
         string calldata modelID
     ) internal view returns (address[] memory, uint[] memory) {
+        bytes32 modelIDHash = keccak256(abi.encodePacked(modelID));
+        if (!_modelIDSet.contains(modelIDHash)) {
+            return (nodes, scores);
+        }
+
+        uint count = 0;
+        address[] memory resultNodes = new address[](nodes.length);
+        uint[] memory resultScores = new uint[](nodes.length);
+
         for (uint i = 0; i < nodes.length; i++) {
             address nodeAddress = nodes[i];
-            string memory lastModelID = nodesMap[nodeAddress].lastModelID;
-            if (keccak256(bytes(lastModelID)) == keccak256(bytes(modelID))) {
-                scores[i] += qos.getTaskScoreLimit();
+            bool contains = _modelIDNodesIndex[modelIDHash].contains(
+                nodeAddress
+            );
+            if (!contains) {
+                resultNodes[count] = nodeAddress;
+                resultScores[count] = scores[i];
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            return (new address[](0), new uint[](0));
+        }
+
+        // resize array by assembly
+        uint subSize = nodes.length - count;
+        assembly {
+            mstore(resultNodes, sub(mload(resultNodes), subSize))
+            mstore(resultScores, sub(mload(resultScores), subSize))
+        }
+
+        return (resultNodes, resultScores);
+    }
+
+    function addScoreByModelIDs(
+        address[] memory nodes,
+        uint[] memory scores,
+        string[] calldata modelIDs
+    ) internal view returns (address[] memory, uint[] memory) {
+        // add extra score to nodes with the same last model ID as the current model ID
+        for (uint i = 0; i < nodes.length; i++) {
+            address nodeAddress = nodes[i];
+            string[] memory lastModelIDs = nodesMap[nodeAddress].lastModelIDs;
+            if (
+                keccak256(abi.encode(lastModelIDs)) ==
+                keccak256(abi.encode(modelIDs))
+            ) {
+                scores[i] *= 2;
             }
         }
         return (nodes, scores);
     }
 
-    function randomSelectNode(
+    function randomSelectAvailableNode(
         bytes32 seed,
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
-        string calldata taskVersion,
-        string calldata modelID
+        uint[3] calldata taskVersion,
+        string[] calldata modelIDs
     ) external returns (address) {
-        generator.manualSeed(seed);
+        random.manualSeed(seed);
         if (bytes(requiredGPU).length > 0) {
             bytes32 gpuID = keccak256(
                 abi.encodePacked(requiredGPU, requiredGPUVRAM)
             );
 
-            if (_availableGPUIDSet.contains(gpuID)) {
+            require(_availableGPUIDSet.contains(gpuID), "No available node");
+
+            (
+                address[] memory nodes,
+                uint[] memory scores
+            ) = filterAvailableNodesByGPUID(gpuID, taskVersion);
+            require(nodes.length > 0, "No available node");
+            (nodes, scores) = selectNodesWithModelID(nodes, scores, modelIDs);
+            addScoreByModelIDs(nodes, scores, modelIDs);
+            uint index = random.choice(scores);
+            return nodes[index];
+        } else {
+            (
+                address[] memory nodes,
+                uint[] memory scores
+            ) = filterAvailableNodesByVram(minimumVRAM, taskVersion);
+            require(nodes.length > 0, "No available node");
+            (nodes, scores) = selectNodesWithModelID(nodes, scores, modelIDs);
+            addScoreByModelIDs(nodes, scores, modelIDs);
+            uint index = random.choice(scores);
+            return nodes[index];
+        }
+    }
+
+    function randomSelectNodesWithoutModelID(
+        bytes32 seed,
+        uint minimumVRAM,
+        string calldata requiredGPU,
+        uint requiredGPUVRAM,
+        uint[3] calldata taskVersion,
+        string calldata modelID,
+        uint count
+    ) external returns (address[] memory) {
+        random.manualSeed(seed);
+
+        if (bytes(requiredGPU).length > 0) {
+            bytes32 gpuID = keccak256(
+                abi.encodePacked(requiredGPU, requiredGPUVRAM)
+            );
+
+            if (_allGPUIDSet.contains(gpuID)) {
                 (
                     address[] memory nodes,
                     uint[] memory scores
                 ) = filterNodesByGPUID(gpuID, taskVersion);
-                // add extra score to nodes with the same last model ID as the current model ID
-                addScoreByModelID(nodes, scores, modelID);
-                uint index = generator.multinomial(scores, 0, scores.length);
-                return nodes[index];
+                (nodes, scores) = selectNodesWithoutModelID(
+                    nodes,
+                    scores,
+                    modelID
+                );
+                if (nodes.length < count) {
+                    return nodes;
+                }
+                uint[] memory indices = random.choices(scores, count);
+                address[] memory results = new address[](count);
+                for (uint i = 0; i < count; i++) {
+                    results[i] = nodes[indices[i]];
+                }
+                return results;
             } else {
-                revert("No available node");
+                return new address[](0);
             }
         } else {
             (address[] memory nodes, uint[] memory scores) = filterNodesByVram(
                 minimumVRAM,
                 taskVersion
             );
-            // add extra score to nodes with the same last model ID as the current model ID
-            addScoreByModelID(nodes, scores, modelID);
-            uint index = generator.multinomial(scores, 0, scores.length);
-            return nodes[index];
+            (nodes, scores) = selectNodesWithoutModelID(nodes, scores, modelID);
+            if (nodes.length < count) {
+                return nodes;
+            }
+            uint[] memory indices = random.choices(scores, count);
+            address[] memory results = new address[](count);
+            for (uint i = 0; i < count; i++) {
+                results[i] = nodes[indices[i]];
+            }
+            return results;
         }
     }
 }

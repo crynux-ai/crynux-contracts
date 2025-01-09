@@ -1,63 +1,109 @@
 const { assert, expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { ethers } = require("hardhat");
+
+const randint = async (v) => {
+    await v.randint();
+    const res = await v.intRes();
+    return res;
+}
+
+const randrange = async (v, start, end) => {
+    await v.randrange(start, end);
+    const res = await v.intRes();
+    return res;
+}
+
+const choice = async (v, weights) => {
+    await v.choice(weights);
+    const index = await v.intRes();
+    return index;
+}
+
+const choices = async (v, weights, k) => {
+    await v.choices(weights, k);
+    const indices = [];
+    for (let i = 0; i < k; i++) {
+        const index = await v.arrRes(i);
+        indices.push(index);
+    }
+    return indices;
+}
+
 
 describe("Random", () => {
-    var v;
-    ethers.deployContract("TestRandom").then((res) => {
-        v = res;
+    let v;
+
+    before('deploy contracts', async () => {
+        v = await ethers.deployContract("TestRandom");
     });
 
+
     it("testManualSeed", async () => {
-        await v.testManualSeed(1);
-        let generator = await v.generator();
-        assert.equal(generator[0], ethers.zeroPadValue("0x0001", 32));
-        assert.equal(generator.nonce, 0);
+        const seed = ethers.zeroPadBytes(ethers.randomBytes(32), 32);
+        await v.manualSeed(seed);
+        const remoteSeed = await v.getSeed();
+        const remoteNonce = await v.getNonce();
+        assert.equal(seed, remoteSeed);
+        assert.equal(remoteNonce, 0);
     });
 
     it("testRandint", async () => {
-        await v.testRandint();
-        let res = await v.intRes();
-        let generator = await v.generator();
-        assert.isTrue(res >= 0);
-        assert.equal(generator.nonce, 1);
+        const seed = ethers.randomBytes(32);
+        await v.manualSeed(seed);
+        const res = await randint(v);
+        assert.isAtLeast(res, 0);
     });
 
     it("testRandrange", async () => {
-        await v.testRandrange();
-        let res = await v.intRes();
-        let generator = await v.generator();
-        assert.isTrue(res >= 0);
-        assert.isTrue(res < 3);
-        assert.equal(generator.nonce, 2);
+        const seed = ethers.randomBytes(32);
+        await v.manualSeed(seed);
+        const res = await randrange(v, 0, 1024);
+        assert.isAtLeast(res, 0);
+        assert.isBelow(res, 1024);
     });
 
-    it("testMultinomial", async () => {
-        await v.testMultinomial();
-        let res = await v.intRes();
-        assert.isTrue(res >= 0);
-        assert.isTrue(res < 3);
-        let generator = await v.generator();
-        assert.equal(generator.nonce, 3);
-    });
+    it("testChoice", async () => {
+        const seed = ethers.randomBytes(32);
+        await v.manualSeed(seed);
+        const index = await choice(v, [1,2,3,4]);
+        assert.isAtLeast(index, 0);
+        assert.isBelow(index, 4);
 
-    it("testWrongRandrange", async () => {
-        try {
-            await v.wrongRandrange();
-            assert.fail("wrongRandRange should fail");
-        } catch (e) {
-            assert.match(e.toString(), /range start should be less than end/);
+        const indexCount = [0, 0, 0, 0];
+        for (let i = 0; i < 100; i++) {
+            await v.choice([1,2,3,4]);
+            const index = await v.intRes();
+            indexCount[index]++;
         }
-        assert.isFalse(await v.boolRes());
+        const maxIndex = indexCount.reduce((iMax, x, i, arr) => x > arr[iMax] ? i : iMax, 0);
+        assert.equal(maxIndex, 3);
     });
 
-    it("testWrongMultinomial", async () => {
-        await v.testWrongMultinomial();
-        assert.isFalse(await v.boolRes());
-    });
+    it("testChoices", async () => {
+        const seed = ethers.randomBytes(32);
+        await v.manualSeed(seed);
+        let indices = await choices(v, [1,2,3], 3);
+        assert.lengthOf(indices, 3);
+        for (const i of indices) {
+            assert.isAtLeast(i, 0);
+            assert.isBelow(i, 3);
+        }
+        indices = await choices(v, [1,2,3,4,10,20,30,40], 4);
+        assert.lengthOf(indices, 4);
+        for (const i of indices) {
+            assert.isAtLeast(i, 0);
+            assert.isBelow(i, 8);
+        }
 
-    it("testWrongMultinomialWeights", async () => {
-        await v.testWrongMultinomialWeights();
-        assert.isFalse(await v.boolRes());
+        const indexCount = [0, 0, 0, 0, 0, 0, 0, 0];
+        for (let i = 0; i < 100; i++) {
+            const indices = await choices(v, [1,2,3,4,10,20,30,40], 4);
+            for (const index of indices) {
+                indexCount[index]++;
+            }
+        }
+        const maxIndex = indexCount.reduce((iMax, x, i, arr) => x > arr[iMax] ? i : iMax, 0);
+        assert.equal(maxIndex, 7);
     });
-
 });

@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./libs/TaskArray.sol";
+import "./libs/Version.sol";
 
 contract TaskQueue is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -28,6 +29,10 @@ contract TaskQueue is Ownable {
     mapping(uint => TaskArray.TArray) private vramTaskArray;
     // task array for tasks that that specify requiredGPU
     mapping(bytes32 => TaskArray.TArray) private gpuIDTaskArray;
+
+    // store a node's local model ids for matching with candidate tasks' model ids in popTask
+    // need to be cleared after popTask
+    EnumerableSet.Bytes32Set private nodeLocalModelIDs;
 
     constructor() Ownable(msg.sender) {
         sizeLimit = 50;
@@ -57,11 +62,11 @@ contract TaskQueue is Ownable {
         bytes32 taskIDCommitment,
         uint taskFee,
         uint taskSize,
-        string calldata modelID,
+        string[] calldata modelIDs,
         uint minimumVRAM,
         string calldata requiredGPU,
         uint requiredGPUVRAM,
-        string calldata taskVersion
+        uint[3] calldata taskVersion
     ) public {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskIDCommitments.length() < sizeLimit, "Task queue is full");
@@ -70,7 +75,7 @@ contract TaskQueue is Ownable {
             taskIDCommitment,
             taskFee,
             taskSize,
-            modelID,
+            modelIDs,
             minimumVRAM,
             requiredGPU,
             requiredGPUVRAM,
@@ -78,79 +83,103 @@ contract TaskQueue is Ownable {
         );
 
         taskIDCommitments.add(taskIDCommitment);
-        taskVrams[taskIDCommitment] = minimumVRAM;
         if (bytes(requiredGPU).length > 0) {
             bytes32 gpuID = keccak256(abi.encodePacked(requiredGPU, requiredGPUVRAM));
             taskGPUIDs[taskIDCommitment] = gpuID;
             gpuIDs.add(gpuID);
             gpuIDTaskArray[gpuID].add(task);
         } else {
+            taskVrams[taskIDCommitment] = minimumVRAM;
             vrams.add(minimumVRAM);
             vramTaskArray[minimumVRAM].add(task);
         }
     }
 
-    function popTask(string calldata gpuName, uint gpuVRAM, string calldata version, string calldata lastModelID) public returns (bytes32) {
+    function popTask(string calldata gpuName, uint gpuVRAM, uint[3] calldata version, string[] calldata localModelIDs, string[] calldata lastModelIDs) public returns (bytes32) {
         require(msg.sender == taskContractAddress, "Not called by the task contract");
         require(taskIDCommitments.length() > 0, "No available task");
 
         bytes32 taskIDCommitment;
-        uint maxPrice;
-
+        uint maxPrice = 0;
+        
+        for (uint i = 0; i < localModelIDs.length; i++) {
+            nodeLocalModelIDs.add(keccak256(abi.encodePacked(localModelIDs[i])));
+        }
+        bytes32 lastModelIDsHash = keccak256(abi.encode(lastModelIDs));
         bytes32 gpuID = keccak256(abi.encodePacked(gpuName, gpuVRAM));
         if (gpuIDs.contains(gpuID)) {
             uint price = gpuIDTaskArray[gpuID].maxPrice();
             TaskArray.Task[] memory tasks = gpuIDTaskArray[gpuID].get(price);
-            // task id commitment which only match the task version
-            bytes32 secondTaskIDCommitment;
+            uint maxTaskScore = 0;
+            bytes32 localTaskIDCommitment;
             for (uint i = 0; i < tasks.length; i++) {
-                if (keccak256(bytes(version)) == keccak256(bytes(tasks[i].taskVersion))) {
-                    if (uint(secondTaskIDCommitment) == 0) {
-                        secondTaskIDCommitment = tasks[i].taskIDCommitment;
-                    }
-                    if (keccak256(bytes(lastModelID)) == keccak256(bytes(tasks[i].modelID))) {
-                        taskIDCommitment = tasks[i].taskIDCommitment;
+                uint[3] memory taskVersion = tasks[i].taskVersion;
+                uint taskScore = 0;
+                if (Version.matchVersion(version, taskVersion)) {
+                    taskScore = 1;
+                    if (lastModelIDsHash == keccak256(abi.encode(tasks[i].modelIDs))) {
+                        maxTaskScore = tasks[i].modelIDs.length;
+                        localTaskIDCommitment = tasks[i].taskIDCommitment;
                         break;
+                    } else {
+                        for (uint j = 0; j < tasks[i].modelIDs.length; j++) {
+                            if (nodeLocalModelIDs.contains(keccak256(abi.encodePacked(tasks[i].modelIDs[j])))) {
+                                taskScore += 1;
+                            }
+                        }
+                        if (taskScore > maxTaskScore) {
+                            maxTaskScore = taskScore;
+                            localTaskIDCommitment = tasks[i].taskIDCommitment;
+                        }
                     }
                 }
             }
-            if (uint(taskIDCommitment) == 0 && uint(secondTaskIDCommitment) != 0) {
-                taskIDCommitment = secondTaskIDCommitment;
-            }
-            if (uint(taskIDCommitment) != 0) {
+            if (maxTaskScore > 0) {
                 maxPrice = price;
+                taskIDCommitment = localTaskIDCommitment;
             }
-        } else {
-            for (uint i = 0; i < vrams.length(); i++) {
-                uint taskMinVram = vrams.at(i);
-                if (gpuVRAM >= taskMinVram) {
-                    uint price = vramTaskArray[taskMinVram].maxPrice();
-                    if (price > maxPrice) {
-                        TaskArray.Task[] memory tasks = vramTaskArray[taskMinVram].get(price);
-                        // task id commitment which only match the task version
-                        bytes32 secondTaskIDCommitment;
-                        for (uint j = 0; j < tasks.length; j++) {
-                            if (keccak256(bytes(version)) == keccak256(bytes(tasks[j].taskVersion))) {
-                                if (uint(secondTaskIDCommitment) == 0) {
-                                    secondTaskIDCommitment = tasks[j].taskIDCommitment;
+        }
+        for (uint i = 0; i < vrams.length(); i++) {
+            uint taskMinVram = vrams.at(i);
+            if (gpuVRAM >= taskMinVram) {
+                uint price = vramTaskArray[taskMinVram].maxPrice();
+                if (price > maxPrice) {
+                    TaskArray.Task[] memory tasks = vramTaskArray[taskMinVram].get(price);
+                    uint maxTaskScore = 0;
+                    bytes32 localTaskIDCommitment;
+                    for (uint j = 0; j < tasks.length; j++) {
+                        uint[3] memory taskVersion = tasks[j].taskVersion;
+                        uint taskScore = 0;
+                        if (Version.matchVersion(version, taskVersion)) {
+                            taskScore = 1;
+                            if (lastModelIDsHash == keccak256(abi.encode(tasks[j].modelIDs))) {
+                                maxTaskScore = tasks[j].modelIDs.length;
+                                localTaskIDCommitment = tasks[j].taskIDCommitment;
+                                break;
+                            } else {
+                                for (uint k = 0; k < tasks[j].modelIDs.length; k++) {
+                                    if (nodeLocalModelIDs.contains(keccak256(abi.encodePacked(tasks[j].modelIDs[k])))) {
+                                        taskScore += 1;
+                                    }
                                 }
-                                if (keccak256(bytes(lastModelID)) == keccak256(bytes(tasks[j].modelID))) {
-                                    taskIDCommitment = tasks[j].taskIDCommitment;
-                                    break;
+                                if (taskScore > maxTaskScore) {
+                                    maxTaskScore = taskScore;
+                                    localTaskIDCommitment = tasks[j].taskIDCommitment;
                                 }
                             }
                         }
-                        if (uint(taskIDCommitment) == 0 && uint(secondTaskIDCommitment) != 0) {
-                            taskIDCommitment = secondTaskIDCommitment;
-                        }
-                        if (uint(taskIDCommitment) != 0) {
-                            maxPrice = price;
-                        }
+                    }
+                    if (maxTaskScore > 0) {
+                        maxPrice = price;
+                        taskIDCommitment = localTaskIDCommitment;
                     }
                 }
             }
         }
-
+        for (uint i = 0; i < localModelIDs.length; i++) {
+            nodeLocalModelIDs.remove(keccak256(abi.encodePacked(localModelIDs[i])));
+        }
+        require(maxPrice > 0, "No available task");
         _removeTask(taskIDCommitment);
         return taskIDCommitment;
     }
@@ -163,16 +192,17 @@ contract TaskQueue is Ownable {
                 delete gpuIDTaskArray[gpuID];
                 gpuIDs.remove(gpuID);
             }
-        }
-        uint vram = taskVrams[taskIDCommitment];
-        vramTaskArray[vram].remove(taskIDCommitment);
-        if (vramTaskArray[vram].length() == 0) {
-            delete vramTaskArray[vram];
-            vrams.remove(vram);
+            delete taskGPUIDs[taskIDCommitment];
+        } else {
+            uint vram = taskVrams[taskIDCommitment];
+            vramTaskArray[vram].remove(taskIDCommitment);
+            if (vramTaskArray[vram].length() == 0) {
+                delete vramTaskArray[vram];
+                vrams.remove(vram);
+            }
+            delete taskVrams[taskIDCommitment];
         }
         taskIDCommitments.remove(taskIDCommitment);
-        delete taskGPUIDs[taskIDCommitment];
-        delete taskVrams[taskIDCommitment];
     }
 
     function removeTask(bytes32 taskIDCommitment) public {
