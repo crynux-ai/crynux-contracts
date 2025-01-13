@@ -652,6 +652,7 @@ contract VSSTask is Ownable {
         taskInfo.status = status;
 
         if (status == TaskStatus.Queued) {
+            emit TaskQueued(taskIDCommitment);
             taskQueue.pushTask(
                 taskIDCommitment,
                 taskInfo.taskFee,
@@ -663,7 +664,6 @@ contract VSSTask is Ownable {
                 taskInfo.taskVersion
             );
             networkStats.taskEnqueue();
-            emit TaskQueued(taskIDCommitment);
 
             if (taskQueue.size() > taskQueue.getSizeLimit()) {
                 bytes32 rmTaskIDCommitment = taskQueue.getCheapestTask();
@@ -672,11 +672,11 @@ contract VSSTask is Ownable {
                 changeTaskState(rmTaskIDCommitment, TaskStatus.EndAborted);
             }
         } else if (status == TaskStatus.Started) {
+            emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
             taskInfo.startTimestamp = block.timestamp;
             nodeTasks[taskInfo.selectedNode] = taskIDCommitment;
             node.startTask(taskInfo.selectedNode);
             networkStats.taskStarted();
-            emit TaskStarted(taskIDCommitment, taskInfo.selectedNode);
 
             for (uint i = 0; i < taskInfo.modelIDs.length; i++) {
                 string memory modelID = taskInfo.modelIDs[i];
@@ -716,37 +716,43 @@ contract VSSTask is Ownable {
                 taskInfo.selectedNode
             );
         } else if (status == TaskStatus.ScoreReady) {
-            taskInfo.scoreReadyTimestamp = block.timestamp;
             emit TaskScoreReady(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode,
                 taskInfo.score
             );
-        } else if (status == TaskStatus.ErrorReported) {
             taskInfo.scoreReadyTimestamp = block.timestamp;
+        } else if (status == TaskStatus.ErrorReported) {
             emit TaskErrorReported(
                 taskInfo.taskIDCommitment,
                 taskInfo.selectedNode,
                 taskInfo.error
             );
+            taskInfo.scoreReadyTimestamp = block.timestamp;
         } else if (
             status == TaskStatus.Validated ||
             status == TaskStatus.GroupValidated
         ) {
             emit TaskValidated(taskInfo.taskIDCommitment);
         } else if (status == TaskStatus.EndSuccess) {
+            emit TaskEndSuccess(taskInfo.taskIDCommitment);
             (bool success, ) = taskInfo.selectedNode.call{
                 value: taskInfo.taskFee
             }("");
             require(success, "Token transfer failed");
-            node.finishTask(taskInfo.selectedNode);
             delete nodeTasks[taskInfo.selectedNode];
+            node.finishTask(taskInfo.selectedNode);
             networkStats.taskFinished();
-            emit TaskEndSuccess(taskInfo.taskIDCommitment);
         } else if (status == TaskStatus.EndAborted) {
             if (lastStatus == TaskStatus.EndAborted) {
                 return;
             }
+            emit TaskEndAborted(
+                taskInfo.taskIDCommitment,
+                msg.sender,
+                lastStatus,
+                taskInfo.abortReason
+            );
             if (lastStatus == TaskStatus.Queued) {
                 // remove task from task queue
                 taskQueue.removeTask(taskIDCommitment);
@@ -765,45 +771,39 @@ contract VSSTask is Ownable {
                     qos.addTaskScore(taskInfo.selectedNode, 0);
                 }
                 require(success, "Token transfer failed");
-                node.finishTask(taskInfo.selectedNode);
                 delete nodeTasks[taskInfo.selectedNode];
+                node.finishTask(taskInfo.selectedNode);
                 networkStats.taskFinished();
             }
-            emit TaskEndAborted(
-                taskInfo.taskIDCommitment,
-                msg.sender,
-                lastStatus,
-                taskInfo.abortReason
-            );
         } else if (status == TaskStatus.EndInvalidated) {
-            (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
-                ""
-            );
-            require(success, "Token transfer failed");
-            node.slash(taskInfo.selectedNode);
-            delete nodeTasks[taskInfo.selectedNode];
-            networkStats.taskFinished();
             emit TaskEndInvalidated(taskInfo.taskIDCommitment);
-        } else if (status == TaskStatus.EndGroupRefund) {
             (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
                 ""
             );
             require(success, "Token transfer failed");
-            node.finishTask(taskInfo.selectedNode);
             delete nodeTasks[taskInfo.selectedNode];
+            node.slash(taskInfo.selectedNode);
             networkStats.taskFinished();
+        } else if (status == TaskStatus.EndGroupRefund) {
             emit TaskEndGroupRefund(taskInfo.taskIDCommitment);
+            (bool success, ) = taskInfo.creator.call{value: taskInfo.taskFee}(
+                ""
+            );
+            require(success, "Token transfer failed");
+            delete nodeTasks[taskInfo.selectedNode];
+            node.finishTask(taskInfo.selectedNode);
+            networkStats.taskFinished();
         } else if (status == TaskStatus.EndGroupSuccess) {
+            emit TaskEndGroupSuccess(taskInfo.taskIDCommitment);
             for (uint i = 0; i < taskInfo.payments.length; i++) {
                 address nodeAddress = taskInfo.paymentAddresses[i];
                 uint fee = taskInfo.payments[i];
                 (bool success, ) = nodeAddress.call{value: fee}("");
                 require(success, "Token transfer failed");
             }
-            node.finishTask(taskInfo.selectedNode);
             delete nodeTasks[taskInfo.selectedNode];
+            node.finishTask(taskInfo.selectedNode);
             networkStats.taskFinished();
-            emit TaskEndGroupSuccess(taskInfo.taskIDCommitment);
         }
     }
 

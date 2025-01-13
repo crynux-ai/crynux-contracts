@@ -179,7 +179,7 @@ contract TaskQueue is Ownable {
         for (uint i = 0; i < localModelIDs.length; i++) {
             nodeLocalModelIDs.remove(keccak256(abi.encodePacked(localModelIDs[i])));
         }
-        require(maxPrice > 0, "No available task");
+        require(taskIDCommitment != 0, "No available task");
         _removeTask(taskIDCommitment);
         return taskIDCommitment;
     }
