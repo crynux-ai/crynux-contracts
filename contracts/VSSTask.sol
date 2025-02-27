@@ -583,6 +583,8 @@ contract VSSTask is Ownable {
     ) private view {
         TaskInfo storage taskInfo = tasks[taskIDCommitment];
         require(taskInfo.taskIDCommitment != 0, "Task not found");
+        address nodeAddress = taskInfo.selectedNode;
+        require(taskIDCommitment == nodeTasks[nodeAddress], "Wrong task");
 
         if (transition == TaskStateTransition.ReportTaskParametersUploaded) {
             require(msg.sender == relayAddress, "Invalid caller");
@@ -635,6 +637,13 @@ contract VSSTask is Ownable {
                 msg.sender == taskInfo.creator ||
                     msg.sender == taskInfo.selectedNode,
                 "Invalid caller"
+            );
+            require(
+                taskInfo.status != TaskStatus.EndSuccess ||
+                    taskInfo.status != TaskStatus.EndInvalidated ||
+                    taskInfo.status != TaskStatus.EndGroupSuccess ||
+                    taskInfo.status != TaskStatus.EndGroupRefund,
+                "Illegal previous task state"
             );
 
             if (taskInfo.startTimestamp > 0) {
