@@ -584,7 +584,7 @@ contract VSSTask is Ownable {
         TaskInfo storage taskInfo = tasks[taskIDCommitment];
         require(taskInfo.taskIDCommitment != 0, "Task not found");
         address nodeAddress = taskInfo.selectedNode;
-        require(taskIDCommitment == nodeTasks[nodeAddress], "Wrong task");
+        require(nodeAddress == address(0) || taskIDCommitment == nodeTasks[nodeAddress], "Wrong task");
 
         if (transition == TaskStateTransition.ReportTaskParametersUploaded) {
             require(msg.sender == relayAddress, "Invalid caller");
